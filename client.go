@@ -1,6 +1,8 @@
 package themis
 
 import (
+	"fmt"
+
 	pb "github.com/golang/protobuf/proto"
 
 	"bytes"
@@ -54,17 +56,23 @@ type Client struct {
 	zkClient         *zk.Conn
 	zkHosts          []string
 	zkRoot           string
+	cachedConns      map[string]*connection
 	cachedRegionInfo map[string]map[string]*RegionInfo
 	maxRetries       int
 	prefetched       map[string]bool
-	rootServer       *proto.ServerName
-	masterServer     *proto.ServerName
+	rootServerName   *proto.ServerName
+	masterServerName *proto.ServerName
+}
+
+func serverNameToAddr(server *proto.ServerName) string {
+	return fmt.Sprintf("%s:%d", server.GetHostName(), server.GetPort())
 }
 
 func NewClient(zkHosts []string, zkRoot string) (*Client, error) {
 	cl := &Client{
 		zkHosts:          zkHosts,
 		zkRoot:           zkRoot,
+		cachedConns:      make(map[string]*connection),
 		cachedRegionInfo: make(map[string]map[string]*RegionInfo),
 		prefetched:       make(map[string]bool),
 		maxRetries:       defaultMaxActionRetries,
@@ -88,23 +96,25 @@ func (c *Client) init() error {
 	if err != nil {
 		return err
 	}
-	c.rootServer, err = c.decodeMeta(res)
+	c.rootServerName, err = c.decodeMeta(res)
 	if err != nil {
 		return err
 	}
-	// TODO:create root region connection
-	log.Info("root region server", c.rootServer)
+	conn, err := newConnection(serverNameToAddr(c.rootServerName))
+	if err != nil {
+		return err
+	}
+	// set buffered regionserver conn
+	c.cachedConns[serverNameToAddr(c.rootServerName)] = conn
 
 	res, _, _, err = c.zkClient.GetW(c.zkRoot + zkMasterAddrPath)
 	if err != nil {
 		return err
 	}
-	c.masterServer, err = c.decodeMeta(res)
+	c.masterServerName, err = c.decodeMeta(res)
 	if err != nil {
 		return err
 	}
-	// TODO:create master server connection
-	log.Info("master server", c.masterServer)
 	return nil
 }
 
@@ -126,3 +136,18 @@ func (c *Client) decodeMeta(data []byte) (*proto.ServerName, error) {
 
 	return mrs.GetServer(), nil
 }
+
+func (c *Client) getConn(addr string) *connection {
+	if s, ok := c.cachedConns[addr]; ok {
+		return s
+	}
+	conn, err := newConnection(addr)
+	if err != nil {
+		log.Error(err)
+		return nil
+	}
+	c.cachedConns[addr] = conn
+	return conn
+}
+
+// TODO parse region info
