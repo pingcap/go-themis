@@ -11,14 +11,17 @@ type action interface {
 }
 
 func (c *Client) action(table, row []byte, action action, useCache bool, retries int) chan pb.Message {
-	log.Info("locate region", table, row, useCache)
 	region := c.locateRegion(table, row, useCache)
 	conn := c.getConn(region.Server, false)
+	if conn == nil || region == nil {
+		return nil
+	}
 
 	regionSpecifier := &proto.RegionSpecifier{
 		Type:  proto.RegionSpecifier_REGION_NAME.Enum(),
 		Value: []byte(region.Name),
 	}
+	log.Info(region.Name)
 
 	var cl *call = nil
 	switch a := action.(type) {
@@ -27,12 +30,11 @@ func (c *Client) action(table, row []byte, action action, useCache bool, retries
 			Region: regionSpecifier,
 			Get:    a.toProto().(*proto.Get),
 		})
-		/*case *Put, *Delete:
+	case *Put:
 		cl = newCall(&proto.MutateRequest{
 			Region:   regionSpecifier,
 			Mutation: a.toProto().(*proto.MutationProto),
 		})
-		*/
 	}
 
 	result := make(chan pb.Message)
@@ -43,7 +45,7 @@ func (c *Client) action(table, row []byte, action action, useCache bool, retries
 		switch r.(type) {
 		case *exception:
 			if retries <= c.maxRetries {
-				// retry action
+				// retry action, and refresh region info
 				log.Infof("Retrying action for the %d time", retries+1)
 				newr := c.action(table, row, action, false, retries+1)
 				result <- <-newr

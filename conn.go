@@ -6,7 +6,6 @@ import (
 	"net"
 
 	pb "github.com/golang/protobuf/proto"
-	"github.com/ngaut/log"
 	"github.com/pingcap/go-themis/proto"
 )
 
@@ -46,26 +45,35 @@ func (c *connection) init() error {
 	if err != nil {
 		return err
 	}
-	go c.processMessages()
+	go func() {
+		err := c.processMessages()
+		if err != nil {
+			// TODO: fuck, try another elgant error handling
+			panic(err)
+		}
+	}()
 	return nil
 }
 
-func (c *connection) processMessages() {
+func (c *connection) processMessages() error {
 	for {
 		msgs, err := readPayloads(c.conn)
+		if err != nil {
+			// TODO: maybe we should notify all ongoing calls that connection is broken?
+			return err
+		}
 
 		var rh proto.ResponseHeader
 		err = pb.Unmarshal(msgs[0], &rh)
 		if err != nil {
-			panic(err)
+			return err
 		}
 
 		callId := rh.GetCallId()
 		call, ok := c.ongoingCalls[int(callId)]
 		if !ok {
-			log.Error(fmt.Errorf("Invalid call id: %d", callId))
+			return fmt.Errorf("Invalid call id: %d", callId)
 		}
-
 		delete(c.ongoingCalls, int(callId))
 
 		exception := rh.GetException()
@@ -75,6 +83,7 @@ func (c *connection) processMessages() {
 			call.complete(nil, msgs[1])
 		}
 	}
+	return nil
 }
 
 func (c *connection) writeHead() error {

@@ -1,8 +1,9 @@
 package themis
 
 import (
+	"errors"
+
 	pb "github.com/golang/protobuf/proto"
-	"github.com/ngaut/log"
 	"github.com/pingcap/go-themis/proto"
 
 	"bytes"
@@ -19,8 +20,10 @@ type Get struct {
 
 func CreateNewGet(key []byte) *Get {
 	return &Get{
-		key:        key,
-		families:   make([][]byte, 0),
+		key: key,
+		// [cf1, cf2, cf3...]
+		families: make([][]byte, 0),
+		// cf1 pos->[c1, c2], cf2 pos -> [c1]
 		qualifiers: make([][][]byte, 0),
 		versions:   1,
 	}
@@ -50,15 +53,12 @@ func (g *Get) AddStringFamily(family string) {
 
 func (g *Get) AddColumn(family, qual []byte) {
 	g.AddFamily(family)
-
 	pos := g.posOfFamily(family)
-
 	g.qualifiers[pos] = append(g.qualifiers[pos], qual)
 }
 
 func (g *Get) AddFamily(family []byte) {
 	pos := g.posOfFamily(family)
-
 	if pos == -1 {
 		g.families = append(g.families, family)
 		g.qualifiers = append(g.qualifiers, make([][]byte, 0))
@@ -92,14 +92,17 @@ func (g *Get) toProto() pb.Message {
 }
 
 func (c *Client) Get(table string, get *Get) (*ResultRow, error) {
-	log.Info("start get")
 	ch := c.action([]byte(table), get.key, get, true, 0)
+	if ch == nil {
+		return nil, fmt.Errorf("Create region server connection failed")
+	}
 
 	response := <-ch
 	switch r := response.(type) {
 	case *proto.GetResponse:
 		return newResultRow(r.GetResult()), nil
+	case *exception:
+		return nil, errors.New(r.msg)
 	}
-
 	return nil, fmt.Errorf("No valid response seen [response: %#v]", response)
 }
