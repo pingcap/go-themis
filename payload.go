@@ -7,6 +7,7 @@ import (
 	"io"
 
 	pb "github.com/golang/protobuf/proto"
+	"github.com/ngaut/log"
 )
 
 func readInt32(r io.Reader) (int32, error) {
@@ -21,22 +22,42 @@ func readN(r io.Reader, n int32) ([]byte, error) {
 	return b, err
 }
 
-func readPayload(r io.Reader) ([]byte, error) {
+func processMessage(msg []byte) [][]byte {
+	buf := pb.NewBuffer(msg)
+	payloads := make([][]byte, 0)
+
+	for {
+		hbytes, err := buf.DecodeRawBytes(true)
+		if err != nil {
+			break
+		}
+
+		payloads = append(payloads, hbytes)
+	}
+
+	log.Debugf("Messages processed [n=%d]", len(payloads))
+
+	return payloads
+}
+
+func readPayloads(r io.Reader) ([][]byte, error) {
 	nBytesExpecting, err := readInt32(r)
 	if err != nil {
 		return nil, err
 	}
+
 	if nBytesExpecting > 0 {
 		buf, err := readN(r, nBytesExpecting)
-		if err != nil {
+
+		if err != nil && err == io.EOF {
 			return nil, err
 		}
-		msgBuf := pb.NewBuffer(buf)
-		hbytes, err := msgBuf.DecodeRawBytes(true)
-		if err != nil {
-			return nil, err
+
+		payloads := processMessage(buf)
+
+		if len(payloads) > 0 {
+			return payloads, err
 		}
-		return hbytes, nil
 	}
 	return nil, errors.New("unexcepted payload")
 }

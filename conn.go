@@ -11,10 +11,11 @@ import (
 )
 
 type connection struct {
-	addr     string
-	conn     net.Conn
-	idGen    *idGenerator
-	isMaster bool
+	addr         string
+	conn         net.Conn
+	idGen        *idGenerator
+	isMaster     bool
+	ongoingCalls map[int]*call
 }
 
 func newConnection(addr string, isMaster bool) (*connection, error) {
@@ -23,10 +24,11 @@ func newConnection(addr string, isMaster bool) (*connection, error) {
 		return nil, err
 	}
 	c := &connection{
-		addr:     addr,
-		conn:     conn,
-		idGen:    newIdGenerator(),
-		isMaster: isMaster,
+		addr:         addr,
+		conn:         conn,
+		idGen:        newIdGenerator(),
+		isMaster:     isMaster,
+		ongoingCalls: map[int]*call{},
 	}
 	err = c.init()
 	if err != nil {
@@ -44,24 +46,33 @@ func (c *connection) init() error {
 	if err != nil {
 		return err
 	}
-	c.processMessages()
+	go c.processMessages()
 	return nil
 }
 
 func (c *connection) processMessages() {
 	for {
-		msg, err := readPayload(c.conn)
-		if err != nil {
-			panic(err)
-		}
-		if msg == nil {
-			continue
-		}
-		log.Info(msg)
+		msgs, err := readPayloads(c.conn)
+
 		var rh proto.ResponseHeader
-		err = pb.Unmarshal(msg, &rh)
+		err = pb.Unmarshal(msgs[0], &rh)
 		if err != nil {
 			panic(err)
+		}
+
+		callId := rh.GetCallId()
+		call, ok := c.ongoingCalls[int(callId)]
+		if !ok {
+			log.Error(fmt.Errorf("Invalid call id: %d", callId))
+		}
+
+		delete(c.ongoingCalls, int(callId))
+
+		exception := rh.GetException()
+		if exception != nil {
+			call.complete(fmt.Errorf("Exception returned: %s\n%s", exception.GetExceptionClassName(), exception.GetStackTrace()), nil)
+		} else if len(msgs) == 2 {
+			call.complete(nil, msgs[1])
 		}
 	}
 }
@@ -76,13 +87,13 @@ func (c *connection) writeHead() error {
 }
 
 func (c *connection) writeConnectionHeader() error {
-	buf := bytes.NewBuffer(nil)
+	buf := newOutputBuffer()
 	service := pb.String("ClientService")
 	if c.isMaster {
 		service = pb.String("MasterService")
 	}
 
-	b, err := pb.Marshal(&proto.ConnectionHeader{
+	err := buf.WritePBMessage(&proto.ConnectionHeader{
 		UserInfo: &proto.UserInformation{
 			EffectiveUser: pb.String("pingcap"),
 		},
@@ -92,19 +103,16 @@ func (c *connection) writeConnectionHeader() error {
 		return err
 	}
 
-	_, err = buf.Write(b)
+	err = buf.PrependSize()
 	if err != nil {
 		return err
 	}
 
-	// out payload :  size | msg buffer
-	outBuf := preparePayload(buf.Bytes())
-
-	n, err := c.conn.Write(outBuf)
+	_, err = c.conn.Write(buf.Bytes())
 	if err != nil {
 		return err
 	}
-	log.Info("outgoing", n)
+
 	return nil
 }
 
@@ -116,35 +124,33 @@ func (c *connection) call(request *call) error {
 		RequestParam: pb.Bool(true),
 	}
 
-	request.setid(uint32(id))
+	request.id = uint32(id)
 
 	bfrh := newOutputBuffer()
 	err := bfrh.WritePBMessage(rh)
 	if err != nil {
-		panic(err)
+		return err
 	}
 
 	bfr := newOutputBuffer()
 	err = bfr.WritePBMessage(request.request)
 	if err != nil {
-		panic(err)
+		return err
 	}
 
 	buf := newOutputBuffer()
+	//Buf=> | total size | pb1 size| pb1 size | pb2 size | pb2 | ...
 	buf.writeDelimitedBuffers(bfrh, bfr)
 
-	c.calls[id] = request
+	c.ongoingCalls[id] = request
 	n, err := c.conn.Write(buf.Bytes())
 
 	if err != nil {
 		return err
 	}
 
-	log.Debugf("Sent bytes to server [callId=%d] [n=%d] [connection=%s]", id, n, c.name)
-
 	if n != len(buf.Bytes()) {
 		return fmt.Errorf("Sent bytes not match number bytes [n=%d] [actual_n=%d]", n, len(buf.Bytes()))
 	}
-
 	return nil
 }

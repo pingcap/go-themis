@@ -1,13 +1,16 @@
 package themis
 
 import (
+	"crypto/md5"
 	"fmt"
+	"strings"
 
 	pb "github.com/golang/protobuf/proto"
 	"github.com/pingcap/go-themis/proto"
 
 	"bytes"
 	"encoding/binary"
+	"encoding/hex"
 	"errors"
 	"time"
 
@@ -151,4 +154,99 @@ func (c *Client) getConn(addr string, isMaster bool) *connection {
 	return conn
 }
 
-// TODO parse region info
+// http://stackoverflow.com/questions/27602013/correct-way-to-get-region-name-by-using-hbase-api
+func (c *Client) createRegionName(table, startKey []byte, id string, newFormat bool) []byte {
+	if len(startKey) == 0 {
+		startKey = make([]byte, 1)
+	}
+
+	b := bytes.Join([][]byte{table, startKey, []byte(id)}, []byte(","))
+
+	if newFormat {
+		m := md5.Sum(b)
+		mhex := []byte(hex.EncodeToString(m[:]))
+		b = append(bytes.Join([][]byte{b, mhex}, []byte(".")), []byte(".")...)
+	}
+	return b
+}
+
+func (c *Client) parseRegion(rr *ResultRow) *RegionInfo {
+	if regionInfoCol, ok := rr.Columns["info:regioninfo"]; ok {
+		offset := strings.Index(regionInfoCol.Value.String(), "PBUF") + 4
+		regionInfoBytes := regionInfoCol.Value[offset:]
+
+		var info proto.RegionInfo
+		err := pb.Unmarshal(regionInfoBytes, &info)
+
+		if err != nil {
+			log.Errorf("Unable to parse region location: %#v", err)
+		}
+
+		log.Debugf("Parsed region info [name=%s]", rr.Row.String())
+
+		return &RegionInfo{
+			Server:         rr.Columns["info:server"].Value.String(),
+			StartKey:       info.GetStartKey(),
+			EndKey:         info.GetEndKey(),
+			Name:           rr.Row.String(),
+			TableNamespace: string(info.GetTableName().GetNamespace()),
+			TableName:      string(info.GetTableName().GetQualifier()),
+			Ts:             rr.Columns["info:server"].Timestamp.String(),
+		}
+	}
+
+	log.Errorf("Unable to parse region location (no regioninfo column): %#v", rr)
+
+	return nil
+}
+
+func (c *Client) locateRegion(table, row []byte, useCache bool) *RegionInfo {
+	metaRegion := &RegionInfo{
+		StartKey: []byte{},
+		EndKey:   []byte{},
+		Name:     string(metaRegionName),
+		Server:   serverNameToAddr(c.rootServerName),
+	}
+
+	if bytes.Equal(table, metaTableName) {
+		return metaRegion
+	}
+
+	// TODO: use region cache
+
+	conn := c.getConn(metaRegion.Server, false)
+
+	regionRow := c.createRegionName(table, row, "", true)
+
+	call := newCall(&proto.GetRequest{
+		Region: &proto.RegionSpecifier{
+			Type:  proto.RegionSpecifier_REGION_NAME.Enum(),
+			Value: metaRegionName,
+		},
+		Get: &proto.Get{
+			Row: regionRow,
+			Column: []*proto.Column{&proto.Column{
+				Family: []byte("info"),
+			}},
+			ClosestRowBefore: pb.Bool(true),
+		},
+	})
+
+	conn.call(call)
+
+	response := <-call.responseCh
+
+	switch r := response.(type) {
+	case *proto.GetResponse:
+		rr := newResultRow(r.GetResult())
+		if region := c.parseRegion(rr); region != nil {
+			log.Debugf("Found region [region: %s]", region.Name)
+			//c.cacheLocation(table, region)
+			return region
+		}
+	}
+
+	log.Debugf("Couldn't find the region: [table=%s] [row=%s] [region_row=%s]", table, row, regionRow)
+
+	return nil
+}

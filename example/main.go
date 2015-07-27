@@ -10,5 +10,10 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	log.Info(c)
+	get := themis.CreateNewGet([]byte("hello"))
+	result, err := c.Get("t1", get)
+	if err != nil {
+		log.Fatal(err)
+	}
+	log.Info(result, result.Columns["cf:v"].Value)
 }
