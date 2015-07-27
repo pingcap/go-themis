@@ -48,7 +48,7 @@ func (c *connection) init() error {
 	go func() {
 		err := c.processMessages()
 		if err != nil {
-			// TODO: fuck, try another elgant error handling
+			// TODO: try another elgant error handling
 			panic(err)
 		}
 	}()

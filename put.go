@@ -25,27 +25,27 @@ func CreateNewPut(key []byte) *Put {
 	}
 }
 
-func (this *Put) AddValue(family, column, value []byte) {
-	pos := this.posOfFamily(family)
+func (p *Put) AddValue(family, column, value []byte) {
+	pos := p.posOfFamily(family)
 
 	if pos == -1 {
-		this.families = append(this.families, family)
-		this.qualifiers = append(this.qualifiers, make([][]byte, 0))
-		this.values = append(this.values, make([][]byte, 0))
+		p.families = append(p.families, family)
+		p.qualifiers = append(p.qualifiers, make([][]byte, 0))
+		p.values = append(p.values, make([][]byte, 0))
 
-		pos = this.posOfFamily(family)
+		pos = p.posOfFamily(family)
 	}
 
-	this.qualifiers[pos] = append(this.qualifiers[pos], column)
-	this.values[pos] = append(this.values[pos], value)
+	p.qualifiers[pos] = append(p.qualifiers[pos], column)
+	p.values[pos] = append(p.values[pos], value)
 }
 
-func (this *Put) AddStringValue(family, column, value string) {
-	this.AddValue([]byte(family), []byte(column), []byte(value))
+func (p *Put) AddStringValue(family, column, value string) {
+	p.AddValue([]byte(family), []byte(column), []byte(value))
 }
 
-func (this *Put) posOfFamily(family []byte) int {
-	for p, v := range this.families {
+func (p *Put) posOfFamily(family []byte) int {
+	for p, v := range p.families {
 		if bytes.Equal(family, v) {
 			return p
 		}
@@ -53,28 +53,28 @@ func (this *Put) posOfFamily(family []byte) int {
 	return -1
 }
 
-func (this *Put) toProto() pb.Message {
-	p := &proto.MutationProto{
-		Row:        this.key,
+func (p *Put) toProto() pb.Message {
+	put := &proto.MutationProto{
+		Row:        p.key,
 		MutateType: proto.MutationProto_PUT.Enum(),
 	}
 
-	for i, family := range this.families {
+	for i, family := range p.families {
 		cv := &proto.MutationProto_ColumnValue{
 			Family: family,
 		}
 
-		for j, _ := range this.qualifiers[i] {
+		for j, _ := range p.qualifiers[i] {
 			cv.QualifierValue = append(cv.QualifierValue, &proto.MutationProto_ColumnValue_QualifierValue{
-				Qualifier: this.qualifiers[i][j],
-				Value:     this.values[i][j],
+				Qualifier: p.qualifiers[i][j],
+				Value:     p.values[i][j],
 			})
 		}
 
-		p.ColumnValue = append(p.ColumnValue, cv)
+		put.ColumnValue = append(put.ColumnValue, cv)
 	}
 
-	return p
+	return put
 }
 
 func (c *Client) Put(table string, put *Put) (bool, error) {

@@ -35,6 +35,11 @@ func (c *Client) action(table, row []byte, action action, useCache bool, retries
 			Region:   regionSpecifier,
 			Mutation: a.toProto().(*proto.MutationProto),
 		})
+	case *CoprocessorServiceCall:
+		cl = newCall(&proto.CoprocessorServiceRequest{
+			Region: regionSpecifier,
+			Call:   a.toProto().(*proto.CoprocessorServiceCall),
+		})
 	}
 
 	result := make(chan pb.Message)

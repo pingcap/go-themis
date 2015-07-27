@@ -24,45 +24,45 @@ func CreateNewDelete(key []byte) *Delete {
 	}
 }
 
-func (this *Delete) AddString(famqual string) error {
+func (d *Delete) AddString(famqual string) error {
 	parts := strings.Split(famqual, ":")
 
 	if len(parts) > 2 {
 		return fmt.Errorf("Too many colons were found in the family:qualifier string. '%s'", famqual)
 	} else if len(parts) == 2 {
-		this.AddStringColumn(parts[0], parts[1])
+		d.AddStringColumn(parts[0], parts[1])
 	} else {
-		this.AddStringFamily(famqual)
+		d.AddStringFamily(famqual)
 	}
 
 	return nil
 }
 
-func (this *Delete) AddStringColumn(family, qual string) {
-	this.AddColumn([]byte(family), []byte(qual))
+func (d *Delete) AddStringColumn(family, qual string) {
+	d.AddColumn([]byte(family), []byte(qual))
 }
 
-func (this *Delete) AddStringFamily(family string) {
-	this.AddFamily([]byte(family))
+func (d *Delete) AddStringFamily(family string) {
+	d.AddFamily([]byte(family))
 }
 
-func (this *Delete) AddColumn(family, qual []byte) {
-	this.AddFamily(family)
-	pos := this.posOfFamily(family)
-	this.qualifiers[pos] = append(this.qualifiers[pos], qual)
+func (d *Delete) AddColumn(family, qual []byte) {
+	d.AddFamily(family)
+	pos := d.posOfFamily(family)
+	d.qualifiers[pos] = append(d.qualifiers[pos], qual)
 }
 
-func (this *Delete) AddFamily(family []byte) {
-	pos := this.posOfFamily(family)
+func (d *Delete) AddFamily(family []byte) {
+	pos := d.posOfFamily(family)
 
 	if pos == -1 {
-		this.families = append(this.families, family)
-		this.qualifiers = append(this.qualifiers, make([][]byte, 0))
+		d.families = append(d.families, family)
+		d.qualifiers = append(d.qualifiers, make([][]byte, 0))
 	}
 }
 
-func (this *Delete) posOfFamily(family []byte) int {
-	for p, v := range this.families {
+func (d *Delete) posOfFamily(family []byte) int {
+	for p, v := range d.families {
 		if bytes.Equal(family, v) {
 			return p
 		}
@@ -70,19 +70,19 @@ func (this *Delete) posOfFamily(family []byte) int {
 	return -1
 }
 
-func (this *Delete) toProto() pb.Message {
-	d := &proto.MutationProto{
-		Row:        this.key,
+func (d *Delete) toProto() pb.Message {
+	del := &proto.MutationProto{
+		Row:        d.key,
 		MutateType: proto.MutationProto_DELETE.Enum(),
 	}
 
-	for i, v := range this.families {
+	for i, v := range d.families {
 		cv := &proto.MutationProto_ColumnValue{
 			Family:         v,
 			QualifierValue: make([]*proto.MutationProto_ColumnValue_QualifierValue, 0),
 		}
 
-		if len(this.qualifiers[i]) == 0 {
+		if len(d.qualifiers[i]) == 0 {
 			cv.QualifierValue = append(cv.QualifierValue, &proto.MutationProto_ColumnValue_QualifierValue{
 				Qualifier:  nil,
 				Timestamp:  pb.Uint64(uint64(math.MaxInt64)),
@@ -90,7 +90,7 @@ func (this *Delete) toProto() pb.Message {
 			})
 		}
 
-		for _, v := range this.qualifiers[i] {
+		for _, v := range d.qualifiers[i] {
 			cv.QualifierValue = append(cv.QualifierValue, &proto.MutationProto_ColumnValue_QualifierValue{
 				Qualifier:  v,
 				Timestamp:  pb.Uint64(uint64(math.MaxInt64)),
@@ -98,10 +98,10 @@ func (this *Delete) toProto() pb.Message {
 			})
 		}
 
-		d.ColumnValue = append(d.ColumnValue, cv)
+		del.ColumnValue = append(del.ColumnValue, cv)
 	}
 
-	return d
+	return del
 }
 
 func (c *Client) Delete(table string, del *Delete) (bool, error) {
