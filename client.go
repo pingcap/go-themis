@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	pb "github.com/golang/protobuf/proto"
+	"github.com/pingcap/go-themis/proto"
 
 	"bytes"
 	"encoding/binary"
@@ -12,7 +13,6 @@ import (
 
 	"github.com/ngaut/go-zookeeper/zk"
 	"github.com/ngaut/log"
-	"github.com/pingcap/go-themis/proto"
 )
 
 const (
@@ -100,7 +100,8 @@ func (c *Client) init() error {
 	if err != nil {
 		return err
 	}
-	conn, err := newConnection(serverNameToAddr(c.rootServerName))
+	log.Info("connect root region server...")
+	conn, err := newConnection(serverNameToAddr(c.rootServerName), false)
 	if err != nil {
 		return err
 	}
@@ -137,11 +138,11 @@ func (c *Client) decodeMeta(data []byte) (*proto.ServerName, error) {
 	return mrs.GetServer(), nil
 }
 
-func (c *Client) getConn(addr string) *connection {
+func (c *Client) getConn(addr string, isMaster bool) *connection {
 	if s, ok := c.cachedConns[addr]; ok {
 		return s
 	}
-	conn, err := newConnection(addr)
+	conn, err := newConnection(addr, isMaster)
 	if err != nil {
 		log.Error(err)
 		return nil
