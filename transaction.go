@@ -39,6 +39,14 @@ func isLockColumn(c *ResultRowColumn) bool {
 	return false
 }
 
+func shouldClean(l ThemisLock) bool {
+	// TODO check worker alive
+	return l.IsExpired()
+}
+
+func cleanLock(l ThemisLock) {
+}
+
 func tryCleanLock(table string, lockKvs *ResultRow) error {
 	for _, c := range lockKvs.SortedColumns {
 		if isLockColumn(c) {
@@ -46,12 +54,7 @@ func tryCleanLock(table string, lockKvs *ResultRow) error {
 			if err != nil {
 				return err
 			}
-			switch v := l.(type) {
-			case *PrimaryLock:
-				log.Info(v)
-			case *SecondaryLock:
-				log.Info(v)
-			}
+			log.Info(l.IsPrimary())
 		}
 	}
 	return nil
