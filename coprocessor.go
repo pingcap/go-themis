@@ -1,6 +1,7 @@
 package themis
 
 import (
+	"errors"
 	"fmt"
 
 	pb "github.com/golang/protobuf/proto"
@@ -24,16 +25,22 @@ func (c *CoprocessorServiceCall) toProto() pb.Message {
 	}
 }
 
-func (cli *Client) ServiceCall(table string, call *CoprocessorServiceCall) error {
+func (cli *Client) ServiceCall(table string, call *CoprocessorServiceCall) (pb.Message, error) {
 	ch := cli.action([]byte(table), call.row, call, true, 0)
 	response := <-ch
 	switch r := response.(type) {
 	case *proto.CoprocessorServiceResponse:
-		log.Info(r)
-		return nil
+		var res proto.Result
+		err := pb.Unmarshal(r.GetValue().GetValue(), &res)
+		if err != nil {
+			log.Error(err)
+			return nil, err
+		}
+		return &res, nil
 	case *exception:
 		log.Error(r.msg)
+		return nil, errors.New(r.msg)
 	}
 
-	return fmt.Errorf("No valid response seen [response: %#v]", response)
+	return nil, fmt.Errorf("No valid response seen [response: %#v]", response)
 }

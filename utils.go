@@ -1,6 +1,10 @@
 package themis
 
-import "bytes"
+import (
+	"bytes"
+	"encoding/binary"
+	"io"
+)
 
 func isContainPreservedColumn(family, qualifier []byte) bool {
 	// cannot contain #
@@ -22,4 +26,19 @@ func isContainPreservedColumn(family, qualifier []byte) bool {
 		return true
 	}
 	return false
+}
+
+type ByteMultiReader interface {
+	io.ByteReader
+	io.Reader
+}
+
+func readVarBytes(r ByteMultiReader) ([]byte, error) {
+	sz, err := binary.ReadUvarint(r)
+	if err != nil {
+		return nil, err
+	}
+	b := make([]byte, sz)
+	_, err = r.Read(b)
+	return b, err
 }

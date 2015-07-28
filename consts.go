@@ -5,3 +5,7 @@ var (
 	DelFamilyName  = []byte("#d")
 	LockFamilyName = []byte("L")
 )
+
+const (
+	ThemisServiceName string = "ThemisService"
+)
