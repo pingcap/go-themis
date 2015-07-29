@@ -11,15 +11,17 @@ import (
 )
 
 type Txn struct {
-	c       *Client
-	oracle  oracle.Oracle
-	startTs uint64
+	c             *Client
+	oracle        oracle.Oracle
+	mutationCache *columnMutationCache
+	startTs       uint64
 }
 
 func NewTxn(c *Client) *Txn {
 	txn := &Txn{
-		c:      c,
-		oracle: &oracles.LocalOracle{},
+		c:             c,
+		mutationCache: newColumnMutationCache(),
+		oracle:        &oracles.LocalOracle{},
 	}
 	txn.startTs = txn.oracle.GetTimestamp()
 	return txn
@@ -85,4 +87,10 @@ func (t *Txn) Get(tbl string, g *ThemisGet) (*ResultRow, error) {
 	}
 
 	return nil, nil
+}
+
+func (txn *Txn) Put(tbl string, p *ThemisPut) {
+	for _, e := range p.put.Entries() {
+		txn.mutationCache.addMutation([]byte(tbl), p.put.key, e.column, e.typ, e.value)
+	}
 }

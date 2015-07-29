@@ -10,20 +10,8 @@ var (
 	_ ThemisLock = (*SecondaryLock)(nil)
 )
 
-type LockType byte
-
-const (
-	TypeMinimum             = LockType(0)
-	TypePut                 = LockType(4)
-	TypeDelete              = LockType(8)
-	TypeDeleteFamilyVersion = LockType(10)
-	TypeDeleteColumn        = LockType(12)
-	TypeDeleteFamily        = LockType(14)
-	TypeMaximum             = LockType(0xff)
-)
-
 type lock struct {
-	typ        LockType
+	typ        Type
 	ts         uint64
 	wallTs     uint64
 	clientAddr string
@@ -91,7 +79,7 @@ func (l *lock) parseField(r *bytes.Buffer) error {
 	if err != nil {
 		return err
 	}
-	l.typ = LockType(typ)
+	l.typ = Type(typ)
 
 	// read ts
 	var ts int64

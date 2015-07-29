@@ -53,6 +53,27 @@ func (p *Put) posOfFamily(family []byte) int {
 	return -1
 }
 
+func (p *Put) Entries() []*columnMutation {
+	var ret []*columnMutation
+	for i, f := range p.families {
+		qualifiers := p.qualifiers[i]
+		for j, q := range qualifiers {
+			mutation := &columnMutation{
+				column: &column{
+					family: f,
+					qual:   q,
+				},
+				mutationValuePair: &mutationValuePair{
+					typ:   TypePut,
+					value: p.values[i][j],
+				},
+			}
+			ret = append(ret, mutation)
+		}
+	}
+	return ret
+}
+
 func (p *Put) toProto() pb.Message {
 	put := &proto.MutationProto{
 		Row:        p.key,
