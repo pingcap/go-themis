@@ -1,5 +1,7 @@
 package themis
 
+import "fmt"
+
 type Type byte
 
 const (
@@ -15,6 +17,10 @@ const (
 type mutationValuePair struct {
 	typ   Type
 	value []byte
+}
+
+func (mp *mutationValuePair) String() string {
+	return fmt.Sprintf("type: %d value: %s", mp.typ, mp.value)
 }
 
 type columnMutation struct {
@@ -95,4 +101,14 @@ func (c *columnMutationCache) getMutation(cc *columnCoordinate) *mutationValuePa
 		return nil
 	}
 	return p
+}
+
+func (c *columnMutationCache) getSize() int {
+	ret := 0
+	for _, v := range c.mutations {
+		for _, vv := range v {
+			ret += len(vv.mutationList())
+		}
+	}
+	return ret
 }

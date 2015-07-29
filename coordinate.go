@@ -1,6 +1,9 @@
 package themis
 
-import "fmt"
+import (
+	"bytes"
+	"fmt"
+)
 
 type column struct {
 	family []byte
@@ -24,6 +27,24 @@ type columnCoordinate struct {
 	table []byte
 	row   []byte
 	column
+}
+
+func newColumnCoordinate(table, row, family, qual []byte) *columnCoordinate {
+	return &columnCoordinate{
+		table: table,
+		row:   row,
+		column: column{
+			family: family,
+			qual:   qual,
+		},
+	}
+}
+
+func (c *columnCoordinate) equal(a *columnCoordinate) bool {
+	return bytes.Compare(c.table, a.table) == 0 &&
+		bytes.Compare(c.row, a.row) == 0 &&
+		bytes.Compare(c.family, a.family) == 0 &&
+		bytes.Compare(c.qual, a.qual) == 0
 }
 
 func (c *columnCoordinate) parseField(b ByteMultiReader) error {
