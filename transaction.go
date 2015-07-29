@@ -11,15 +11,16 @@ import (
 )
 
 type Txn struct {
-	c                *Client
-	oracle           oracle.Oracle
-	mutationCache    *columnMutationCache
-	startTs          uint64
-	primaryRow       *rowMutation
-	primary          *columnCoordinate
-	secondaryRows    []*rowMutation
-	primaryRowOffset int
-	singleRowTxn     bool
+	c                  *Client
+	oracle             oracle.Oracle
+	mutationCache      *columnMutationCache
+	startTs            uint64
+	primaryRow         *rowMutation
+	primary            *columnCoordinate
+	secondaryRows      []*rowMutation
+	primaryRowOffset   int
+	singleRowTxn       bool
+	secondaryLockBytes []byte
 }
 
 func NewTxn(c *Client) *Txn {
@@ -59,11 +60,10 @@ func tryCleanLock(table string, lockKvs *ResultRow) error {
 	// TODO
 	for _, c := range lockKvs.SortedColumns {
 		if isLockColumn(c) {
-			l, err := parseLockFromBytes([]byte(c.Value))
+			_, err := parseLockFromBytes([]byte(c.Value))
 			if err != nil {
 				return err
 			}
-			log.Info(l.IsPrimary())
 		}
 	}
 	return nil
@@ -130,6 +130,24 @@ func (txn *Txn) selectPrepareAndSecondary() {
 		txn.singleRowTxn = true
 	}
 	// construct secondary lock
+	secondaryLock := txn.constructSecondaryLock(TypePut)
+	if secondaryLock != nil {
+		txn.secondaryLockBytes = secondaryLock.toBytes()
+	} else {
+		txn.secondaryLockBytes = nil
+	}
+	log.Info(txn.secondaryLockBytes)
+}
+
+func (txn *Txn) constructSecondaryLock(typ Type) *SecondaryLock {
+	if txn.primaryRow.getSize() <= 1 && len(txn.secondaryRows) == 0 {
+		return nil
+	}
+	l := newSecondaryLock()
+	l.primaryCoordinate = txn.primary
+	l.ts = txn.startTs
+	// TODO set client addr
+	return l
 }
 
 func (txn *Txn) Commit() error {

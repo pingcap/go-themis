@@ -24,7 +24,9 @@ type PrimaryLock struct {
 
 func newPrimaryLock() *PrimaryLock {
 	return &PrimaryLock{
-		lock: &lock{},
+		lock: &lock{
+			clientAddr: "null-client-addr",
+		},
 	}
 }
 
@@ -47,7 +49,9 @@ type SecondaryLock struct {
 
 func newSecondaryLock() *SecondaryLock {
 	return &SecondaryLock{
-		lock:              &lock{},
+		lock: &lock{
+			clientAddr: "null-client-addr",
+		},
 		primaryCoordinate: &columnCoordinate{},
 	}
 }
@@ -64,6 +68,26 @@ func (l *SecondaryLock) GetPrimaryLock() *PrimaryLock {
 
 func (l *SecondaryLock) IsPrimary() bool {
 	return false
+}
+
+func (l *SecondaryLock) toBytes() []byte {
+	buf := bytes.NewBuffer(nil)
+	if l.IsPrimary() {
+		binary.Write(buf, binary.BigEndian, uint8(1))
+	} else {
+		binary.Write(buf, binary.BigEndian, uint8(0))
+	}
+
+	binary.Write(buf, binary.BigEndian, byte(l.typ))
+	binary.Write(buf, binary.BigEndian, int64(l.ts))
+	// write client addr
+	szBuf := make([]byte, 8)
+	n := binary.PutUvarint(szBuf, uint64(len(l.clientAddr)))
+	buf.Write(szBuf[0:n])
+	buf.Write([]byte(l.clientAddr))
+
+	binary.Write(buf, binary.BigEndian, int64(l.wallTs))
+	return buf.Bytes()
 }
 
 type ThemisLock interface {

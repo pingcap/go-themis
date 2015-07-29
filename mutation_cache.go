@@ -34,6 +34,10 @@ type rowMutation struct {
 	mutations map[string]*mutationValuePair
 }
 
+func (r *rowMutation) getSize() int {
+	return len(r.mutations)
+}
+
 func newRowMutation(row []byte) *rowMutation {
 	return &rowMutation{
 		row:       row,

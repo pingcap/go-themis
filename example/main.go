@@ -23,4 +23,16 @@ func main() {
 	tx := themis.NewTxn(c)
 	themisGet := themis.NewThemisGet(get)
 	tx.Get("CashTable", themisGet)
+
+	put := themis.CreateNewPut([]byte("Joe"))
+	put.AddValue([]byte("Account"), []byte("cash"), []byte("1"))
+
+	put2 := themis.CreateNewPut([]byte("Bob"))
+	put2.AddValue([]byte("Account"), []byte("cash"), []byte("2"))
+
+	tx.Put("CashTable", themis.NewThemisPut(put))
+	tx.Put("CashTable", themis.NewThemisPut(put2))
+
+	tx.Commit()
+
 }

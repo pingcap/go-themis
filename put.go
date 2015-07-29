@@ -25,7 +25,7 @@ func CreateNewPut(key []byte) *Put {
 	}
 }
 
-func (p *Put) AddValue(family, column, value []byte) {
+func (p *Put) AddValue(family, qual, value []byte) {
 	pos := p.posOfFamily(family)
 
 	if pos == -1 {
@@ -36,7 +36,7 @@ func (p *Put) AddValue(family, column, value []byte) {
 		pos = p.posOfFamily(family)
 	}
 
-	p.qualifiers[pos] = append(p.qualifiers[pos], column)
+	p.qualifiers[pos] = append(p.qualifiers[pos], qual)
 	p.values[pos] = append(p.values[pos], value)
 }
 
