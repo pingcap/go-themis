@@ -21,12 +21,10 @@ func (c *column) String() string {
 	return fmt.Sprintf("%s:%s", c.family, c.qual)
 }
 
-func columnFromString(s string) *column {
+func (c *column) parseFromString(s string) {
 	pair := strings.Split(s, ":")
-	return &column{
-		family: []byte(pair[0]),
-		qual:   []byte(pair[1]),
-	}
+	c.family = []byte(pair[0])
+	c.qual = []byte(pair[1])
 }
 
 type columnCoordinate struct {
@@ -60,7 +58,7 @@ func (c *columnCoordinate) equal(a *columnCoordinate) bool {
 }
 
 func (c *columnCoordinate) String() string {
-	return fmt.Sprintf("%s:%s:%s%s", c.table, c.row, c.family, c.qual)
+	return fmt.Sprintf("%s:%s:%s:%s", c.table, c.row, c.family, c.qual)
 }
 
 func (c *columnCoordinate) parserFromString(s string) {

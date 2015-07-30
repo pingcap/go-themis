@@ -148,11 +148,12 @@ func (txn *Txn) constructPrimaryLock() *PrimaryLock {
 }
 
 func (txn *Txn) prewriteRowWithLockClean(tbl []byte, mutation *rowMutation, containPrimary bool) {
-	l := txn.prewriteRow(tbl, mutation, containPrimary)
+	txn.prewriteRow(tbl, mutation, containPrimary)
 }
 
 func (txn *Txn) prewriteRow(tbl []byte, mutation *rowMutation, containPrimary bool) ThemisLock {
 	if containPrimary {
+		txn.themisCli.prewriteRow(tbl, mutation.row, mutation.mutationList(), txn.startTs, txn.constructPrimaryLock().toBytes(), txn.secondaryLockBytes, txn.primaryRowOffset)
 	}
 	return nil
 }

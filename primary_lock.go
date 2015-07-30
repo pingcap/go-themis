@@ -41,8 +41,12 @@ func (l *PrimaryLock) isExpired() bool {
 	return l.lock.expired
 }
 
-func (l *PrimaryLock) getPrimaryLock() *PrimaryLock {
-	return l
+func (l *PrimaryLock) getSecondaryColumnType(c *columnCoordinate) Type {
+	v, ok := l.secondaries[c.String()]
+	if !ok {
+		return TypeMinimum
+	}
+	return v
 }
 
 func (l *PrimaryLock) isPrimary() bool {

@@ -23,10 +23,8 @@ func (l *SecondaryLock) isExpired() bool {
 	return l.lock.expired
 }
 
-func (l *SecondaryLock) getPrimaryLock() *PrimaryLock {
-	return &PrimaryLock{
-		lock: l.lock,
-	}
+func (l *SecondaryLock) getPrimaryColumn() *columnCoordinate {
+	return l.primaryCoordinate
 }
 
 func (l *SecondaryLock) isPrimary() bool {

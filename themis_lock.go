@@ -30,7 +30,6 @@ func (l *lock) write(w io.Writer) {
 type ThemisLock interface {
 	isExpired() bool
 	isPrimary() bool
-	getPrimaryLock() *PrimaryLock
 	toBytes() []byte
 	parseField(r ByteMultiReader) error
 }

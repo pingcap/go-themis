@@ -25,18 +25,12 @@ func (c *CoprocessorServiceCall) toProto() pb.Message {
 	}
 }
 
-func (cli *Client) ServiceCall(table string, call *CoprocessorServiceCall) (pb.Message, error) {
+func (cli *Client) ServiceCall(table string, call *CoprocessorServiceCall) (*proto.CoprocessorServiceResponse, error) {
 	ch := cli.action([]byte(table), call.row, call, true, 0)
 	response := <-ch
 	switch r := response.(type) {
 	case *proto.CoprocessorServiceResponse:
-		var res proto.Result
-		err := pb.Unmarshal(r.GetValue().GetValue(), &res)
-		if err != nil {
-			log.Error(err)
-			return nil, err
-		}
-		return &res, nil
+		return r, nil
 	case *exception:
 		log.Error(r.msg)
 		return nil, errors.New(r.msg)

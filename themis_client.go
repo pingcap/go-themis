@@ -1,10 +1,11 @@
 package themis
 
 import (
-	"reflect"
+	"bytes"
+	"encoding/binary"
+	"errors"
 
 	pb "github.com/golang/protobuf/proto"
-	"github.com/ngaut/log"
 	"github.com/pingcap/go-themis/proto"
 )
 
@@ -31,7 +32,12 @@ func (t *themisClient) themisGet(tbl []byte, g *Get, startTs uint64) (*ResultRow
 	if err != nil {
 		return nil, err
 	}
-	return newResultRow(r.(*proto.Result)), nil
+	var res proto.Result
+	err = pb.Unmarshal(r.GetValue().GetValue(), &res)
+	if err != nil {
+		return nil, err
+	}
+	return newResultRow(&res), nil
 }
 
 func (t *themisClient) prewriteRow(tbl []byte, row []byte, mutations []*columnMutation, prewriteTs uint64, primaryLockBytes []byte, secondaryLockBytes []byte, primaryOffset int) (ThemisLock, error) {
@@ -60,6 +66,21 @@ func (t *themisClient) prewriteRow(tbl []byte, row []byte, mutations []*columnMu
 		return nil, err
 	}
 
-	log.Info(reflect.TypeOf(r))
+	var res proto.ThemisPrewriteResponse
+	err = pb.Unmarshal(r.GetValue().GetValue(), &res)
+	if err != nil {
+		return nil, err
+	}
+	b := res.GetResult()
+	// b[0]=>commitTs b[1] => lockbytes b[2]=>family b[3]=>qual b[4]=>isExpired
+	// if b[0] != 0 means encounter conflict
+	buf := bytes.NewBuffer(b[0])
+	var commitTs int64
+	if err := binary.Read(buf, binary.BigEndian, &commitTs); err != nil {
+		return nil, err
+	}
+	if commitTs != 0 {
+		return nil, errors.New("encounter conflict")
+	}
 	return nil, nil
 }

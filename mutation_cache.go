@@ -81,8 +81,10 @@ func (r *rowMutation) addMutation(c *column, typ Type, val []byte) {
 func (r *rowMutation) mutationList() []*columnMutation {
 	var ret []*columnMutation
 	for k, v := range r.mutations {
+		c := &column{}
+		c.parseFromString(k)
 		ret = append(ret, &columnMutation{
-			column:            columnFromString(k),
+			column:            c,
 			mutationValuePair: v,
 		})
 	}
