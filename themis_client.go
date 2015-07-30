@@ -82,5 +82,12 @@ func (t *themisClient) prewriteRow(tbl []byte, row []byte, mutations []*columnMu
 	if commitTs != 0 {
 		return nil, errors.New("encounter conflict")
 	}
+	col := &columnCoordinate{
+		table:  tbl,
+		row:    row,
+		family: b[2],
+		qual:   b[3],
+	}
+	//TODO create themis lock
 	return nil, nil
 }
