@@ -3,6 +3,8 @@ package themis
 import (
 	"bytes"
 	"fmt"
+	"io"
+	"strings"
 )
 
 type column struct {
@@ -10,16 +12,20 @@ type column struct {
 	qual   []byte
 }
 
+func (c *column) write(w io.Writer) {
+	writeVarBytes(w, c.family)
+	writeVarBytes(w, c.qual)
+}
+
 func (c *column) String() string {
 	return fmt.Sprintf("%s:%s", c.family, c.qual)
 }
 
 func columnFromString(s string) *column {
-	var f, q string
-	fmt.Sscanf(s, "%s:%s", &f, &q)
+	pair := strings.Split(s, ":")
 	return &column{
-		family: []byte(f),
-		qual:   []byte(q),
+		family: []byte(pair[0]),
+		qual:   []byte(pair[1]),
 	}
 }
 
@@ -38,6 +44,12 @@ func newColumnCoordinate(table, row, family, qual []byte) *columnCoordinate {
 			qual:   qual,
 		},
 	}
+}
+
+func (c *columnCoordinate) write(w io.Writer) {
+	writeVarBytes(w, c.table)
+	writeVarBytes(w, c.row)
+	c.column.write(w)
 }
 
 func (c *columnCoordinate) equal(a *columnCoordinate) bool {

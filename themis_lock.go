@@ -3,6 +3,7 @@ package themis
 import (
 	"bytes"
 	"encoding/binary"
+	"io"
 )
 
 var (
@@ -18,8 +19,18 @@ type lock struct {
 	expired    bool
 }
 
+func (l *lock) write(w io.Writer) {
+	binary.Write(w, binary.BigEndian, byte(l.typ))
+	binary.Write(w, binary.BigEndian, int64(l.ts))
+	// write client addr
+	writeVarBytes(w, []byte(l.clientAddr))
+	binary.Write(w, binary.BigEndian, int64(l.wallTs))
+}
+
 type PrimaryLock struct {
 	*lock
+	// {coordinate => type}
+	secondaries map[string]Type
 }
 
 func newPrimaryLock() *PrimaryLock {
@@ -27,7 +38,11 @@ func newPrimaryLock() *PrimaryLock {
 		lock: &lock{
 			clientAddr: "null-client-addr",
 		},
+		secondaries: map[string]Type{},
 	}
+}
+
+func (l *PrimaryLock) addSecondaryColumn(col *columnCoordinate, t Type) {
 }
 
 func (l *PrimaryLock) IsExpired() bool {
@@ -77,16 +92,8 @@ func (l *SecondaryLock) toBytes() []byte {
 	} else {
 		binary.Write(buf, binary.BigEndian, uint8(0))
 	}
-
-	binary.Write(buf, binary.BigEndian, byte(l.typ))
-	binary.Write(buf, binary.BigEndian, int64(l.ts))
-	// write client addr
-	szBuf := make([]byte, 8)
-	n := binary.PutUvarint(szBuf, uint64(len(l.clientAddr)))
-	buf.Write(szBuf[0:n])
-	buf.Write([]byte(l.clientAddr))
-
-	binary.Write(buf, binary.BigEndian, int64(l.wallTs))
+	l.lock.write(buf)
+	l.primaryCoordinate.write(buf)
 	return buf.Bytes()
 }
 

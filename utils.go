@@ -42,3 +42,17 @@ func readVarBytes(r ByteMultiReader) ([]byte, error) {
 	_, err = r.Read(b)
 	return b, err
 }
+
+func writeVarBytes(w io.Writer, b []byte) error {
+	szBuf := make([]byte, 8)
+	n := binary.PutUvarint(szBuf, uint64(len(b)))
+	_, err := w.Write(szBuf[0:n])
+	if err != nil {
+		return err
+	}
+	_, err = w.Write(b)
+	if err != nil {
+		return err
+	}
+	return nil
+}

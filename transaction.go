@@ -3,15 +3,13 @@ package themis
 import (
 	"bytes"
 
-	pb "github.com/golang/protobuf/proto"
 	"github.com/ngaut/log"
 	"github.com/pingcap/go-themis/oracle"
 	"github.com/pingcap/go-themis/oracle/oracles"
-	"github.com/pingcap/go-themis/proto"
 )
 
 type Txn struct {
-	c                  *Client
+	themisCli          *themisClient
 	oracle             oracle.Oracle
 	mutationCache      *columnMutationCache
 	startTs            uint64
@@ -25,7 +23,7 @@ type Txn struct {
 
 func NewTxn(c *Client) *Txn {
 	txn := &Txn{
-		c:                c,
+		themisCli:        &themisCLient{c},
 		mutationCache:    newColumnMutationCache(),
 		oracle:           &oracles.LocalOracle{},
 		primaryRowOffset: -1,
@@ -70,29 +68,6 @@ func tryCleanLock(table string, lockKvs *ResultRow) error {
 }
 
 func (t *Txn) Get(tbl string, g *ThemisGet) (*ResultRow, error) {
-	requestParam := &proto.ThemisGetRequest{
-		Get:        g.get.toProto().(*proto.Get),
-		StartTs:    pb.Uint64(t.startTs),
-		IgnoreLock: pb.Bool(false),
-	}
-	param, _ := pb.Marshal(requestParam)
-
-	call := &CoprocessorServiceCall{
-		row:          g.get.key,
-		serviceName:  ThemisServiceName,
-		methodName:   "themisGet",
-		requestParam: param,
-	}
-
-	r, err := t.c.ServiceCall(string(tbl), call)
-	if err != nil {
-		return nil, err
-	}
-	rr := newResultRow(r.(*proto.Result))
-	if isLockResult(rr) {
-		tryCleanLock(tbl, rr)
-	}
-
 	return nil, nil
 }
 
@@ -100,6 +75,16 @@ func (txn *Txn) Put(tbl string, p *ThemisPut) {
 	for _, e := range p.put.Entries() {
 		txn.mutationCache.addMutation([]byte(tbl), p.put.key, e.column, e.typ, e.value)
 	}
+}
+
+func (txn *Txn) Commit() error {
+	if txn.mutationCache.getSize() == 0 {
+		return nil
+	}
+
+	txn.selectPrepareAndSecondary()
+	txn.prewritePrimary()
+	return nil
 }
 
 func (txn *Txn) selectPrepareAndSecondary() {
@@ -136,6 +121,7 @@ func (txn *Txn) selectPrepareAndSecondary() {
 	} else {
 		txn.secondaryLockBytes = nil
 	}
+	log.Info(secondaryLock.primaryCoordinate)
 	log.Info(txn.secondaryLockBytes)
 }
 
@@ -150,11 +136,27 @@ func (txn *Txn) constructSecondaryLock(typ Type) *SecondaryLock {
 	return l
 }
 
-func (txn *Txn) Commit() error {
-	if txn.mutationCache.getSize() == 0 {
-		return nil
+func (txn *Txn) constructPrimaryLock() *PrimaryLock {
+	l := newPrimaryLock()
+	l.typ = txn.primaryRow.getType(txn.primary.column)
+	l.ts = txn.startTs
+	for _, s := range txn.secondaryRows {
+		l.addSecondaryColumn()
 	}
+	return l
+}
 
-	txn.selectPrepareAndSecondary()
+func (txn *Txn) prewriteRowWithLockClean(tbl []byte, mutation *rowMutation, containPrimary bool) {
+	l := txn.prewriteRow(tbl, mutation, containPrimary)
+}
+
+func (txn *Txn) prewriteRow(tbl []byte, mutation *rowMutation, containPrimary bool) ThemisLock {
+	if containPrimary {
+		txn.themisCli.prewriteRow(tbl, mutation.row, mutation.mutationList(), txn.startTs, constructPi
+	}
 	return nil
+}
+
+func (txn *Txn) prewritePrimary() {
+	txn.prewriteRowWithLockClean(txn.primary.table, txn.primaryRow, true)
 }

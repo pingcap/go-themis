@@ -1,6 +1,10 @@
 package themis
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/pingcap/go-themis/proto"
+)
 
 type Type byte
 
@@ -28,6 +32,20 @@ type columnMutation struct {
 	*mutationValuePair
 }
 
+func (cm *columnMutation) toCell() *proto.Cell {
+	ret := &proto.Cell{
+		Family:    cm.family,
+		Qualifier: cm.qual,
+		Value:     cm.value,
+	}
+	if cm.typ == TypePut {
+		ret.CellType = proto.CellType_PUT.Enum()
+	} else {
+		ret.CellType = proto.CellType_DELETE.Enum()
+	}
+	return ret
+}
+
 type rowMutation struct {
 	row []byte
 	// mutations := { 'cf:col' => mutationValuePair }
@@ -36,6 +54,14 @@ type rowMutation struct {
 
 func (r *rowMutation) getSize() int {
 	return len(r.mutations)
+}
+
+func (r *rowMutation) getType(c column) Type {
+	p, ok := r.mutations[c.String()]
+	if !ok {
+		return TypeMinimum
+	}
+	return p.typ
 }
 
 func newRowMutation(row []byte) *rowMutation {
