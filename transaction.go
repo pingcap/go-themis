@@ -49,7 +49,7 @@ func isLockColumn(c *ResultRowColumn) bool {
 
 func shouldClean(l ThemisLock) bool {
 	// TODO check worker alive
-	return l.IsExpired()
+	return l.isExpired()
 }
 
 func cleanLock(l ThemisLock) {

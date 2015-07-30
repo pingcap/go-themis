@@ -19,17 +19,17 @@ func newSecondaryLock() *SecondaryLock {
 	}
 }
 
-func (l *SecondaryLock) IsExpired() bool {
+func (l *SecondaryLock) isExpired() bool {
 	return l.lock.expired
 }
 
-func (l *SecondaryLock) GetPrimaryLock() *PrimaryLock {
+func (l *SecondaryLock) getPrimaryLock() *PrimaryLock {
 	return &PrimaryLock{
 		lock: l.lock,
 	}
 }
 
-func (l *SecondaryLock) IsPrimary() bool {
+func (l *SecondaryLock) isPrimary() bool {
 	return false
 }
 
@@ -39,4 +39,15 @@ func (l *SecondaryLock) toBytes() []byte {
 	l.lock.write(buf)
 	l.primaryCoordinate.write(buf)
 	return buf.Bytes()
+}
+
+func (l *SecondaryLock) parseField(r ByteMultiReader) error {
+	l.lock.parseField(r)
+	primary := &columnCoordinate{}
+	err := primary.parseField(r)
+	if err != nil {
+		return err
+	}
+	l.primaryCoordinate = primary
+	return nil
 }

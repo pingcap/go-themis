@@ -37,14 +37,34 @@ func (l *PrimaryLock) toBytes() []byte {
 	return buf.Bytes()
 }
 
-func (l *PrimaryLock) IsExpired() bool {
+func (l *PrimaryLock) isExpired() bool {
 	return l.lock.expired
 }
 
-func (l *PrimaryLock) GetPrimaryLock() *PrimaryLock {
+func (l *PrimaryLock) getPrimaryLock() *PrimaryLock {
 	return l
 }
 
-func (l *PrimaryLock) IsPrimary() bool {
+func (l *PrimaryLock) isPrimary() bool {
 	return true
+}
+
+func (l *PrimaryLock) parseField(buf ByteMultiReader) error {
+	l.lock.parseField(buf)
+	var sz int32
+	err := binary.Read(buf, binary.BigEndian, &sz)
+	if err != nil {
+		return err
+	}
+	for i := 0; i < int(sz); i++ {
+		c := &columnCoordinate{}
+		c.parseField(buf)
+		b, err := buf.ReadByte()
+		if err != nil {
+			return err
+		}
+		t := Type(b)
+		l.addSecondaryColumn(c, t)
+	}
+	return nil
 }
