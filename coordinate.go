@@ -59,6 +59,20 @@ func (c *columnCoordinate) equal(a *columnCoordinate) bool {
 		bytes.Compare(c.qual, a.qual) == 0
 }
 
+func (c *columnCoordinate) String() string {
+	return fmt.Sprintf("%s:%s:%s%s", c.table, c.row, c.family, c.qual)
+}
+
+func (c *columnCoordinate) parserFromString(s string) {
+	parts := strings.Split(s, ":")
+	if len(parts) == 4 {
+		c.table = []byte(parts[0])
+		c.row = []byte(parts[1])
+		c.family = []byte(parts[2])
+		c.qual = []byte(parts[3])
+	}
+}
+
 func (c *columnCoordinate) parseField(b ByteMultiReader) error {
 	table, err := readVarBytes(b)
 	if err != nil {

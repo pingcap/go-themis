@@ -43,6 +43,20 @@ func newPrimaryLock() *PrimaryLock {
 }
 
 func (l *PrimaryLock) addSecondaryColumn(col *columnCoordinate, t Type) {
+	l.secondaries[col.String()] = t
+}
+
+func (l *PrimaryLock) toBytes() []byte {
+	buf := bytes.NewBuffer(nil)
+	binary.Write(buf, binary.BigEndian, uint8(1))
+	l.lock.write(buf)
+	for k, v := range l.secondaries {
+		c := &columnCoordinate{}
+		c.parserFromString(k)
+		c.write(buf)
+		buf.WriteByte(uint8(v))
+	}
+	return buf.Bytes()
 }
 
 func (l *PrimaryLock) IsExpired() bool {
@@ -87,11 +101,7 @@ func (l *SecondaryLock) IsPrimary() bool {
 
 func (l *SecondaryLock) toBytes() []byte {
 	buf := bytes.NewBuffer(nil)
-	if l.IsPrimary() {
-		binary.Write(buf, binary.BigEndian, uint8(1))
-	} else {
-		binary.Write(buf, binary.BigEndian, uint8(0))
-	}
+	binary.Write(buf, binary.BigEndian, uint8(0))
 	l.lock.write(buf)
 	l.primaryCoordinate.write(buf)
 	return buf.Bytes()

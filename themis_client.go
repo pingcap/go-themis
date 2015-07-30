@@ -34,14 +34,14 @@ func (t *themisClient) themisGet(tbl []byte, g *Get, startTs uint64) (*ResultRow
 	return newResultRow(r.(*proto.Result)), nil
 }
 
-func (t *themisClient) prewriteRow(tbl []byte, row []byte, mutations []*columnMutation, prewriteTs uint64, primaryLockBytes []byte, secondaryLockBytes []byte, primaryOffset int) {
-	var cells []*Cell
+func (t *themisClient) prewriteRow(tbl []byte, row []byte, mutations []*columnMutation, prewriteTs uint64, primaryLockBytes []byte, secondaryLockBytes []byte, primaryOffset int) (ThemisLock, error) {
+	var cells []*proto.Cell
 	request := &proto.ThemisPrewriteRequest{
 		Row:           row,
 		PrewriteTs:    pb.Uint64(prewriteTs),
-		PrimaryLock:   primaryLock,
-		SecondaryLock: secondaryLock,
-		PrimaryIndex:  primaryOffset,
+		PrimaryLock:   primaryLockBytes,
+		SecondaryLock: secondaryLockBytes,
+		PrimaryIndex:  pb.Int(primaryOffset),
 	}
 	for _, m := range mutations {
 		cells = append(cells, m.toCell())
@@ -61,4 +61,5 @@ func (t *themisClient) prewriteRow(tbl []byte, row []byte, mutations []*columnMu
 	}
 
 	log.Info(reflect.TypeOf(r))
+	return nil, nil
 }

@@ -16,6 +16,7 @@ type Txn struct {
 	primaryRow         *rowMutation
 	primary            *columnCoordinate
 	secondaryRows      []*rowMutation
+	secondary          []*columnCoordinate
 	primaryRowOffset   int
 	singleRowTxn       bool
 	secondaryLockBytes []byte
@@ -23,7 +24,7 @@ type Txn struct {
 
 func NewTxn(c *Client) *Txn {
 	txn := &Txn{
-		themisCli:        &themisCLient{c},
+		themisCli:        &themisClient{c},
 		mutationCache:    newColumnMutationCache(),
 		oracle:           &oracles.LocalOracle{},
 		primaryRowOffset: -1,
@@ -88,7 +89,7 @@ func (txn *Txn) Commit() error {
 }
 
 func (txn *Txn) selectPrepareAndSecondary() {
-	var secondary []*columnCoordinate
+	txn.secondary = nil
 	for tblName, rowMutations := range txn.mutationCache.mutations {
 		for _, rowMutation := range rowMutations {
 			row := rowMutation.row
@@ -103,7 +104,7 @@ func (txn *Txn) selectPrepareAndSecondary() {
 					txn.primaryRow = rowMutation
 					findPrimaryInRow = true
 				} else {
-					secondary = append(secondary, colcord)
+					txn.secondary = append(txn.secondary, colcord)
 				}
 			}
 			if !findPrimaryInRow {
@@ -140,8 +141,8 @@ func (txn *Txn) constructPrimaryLock() *PrimaryLock {
 	l := newPrimaryLock()
 	l.typ = txn.primaryRow.getType(txn.primary.column)
 	l.ts = txn.startTs
-	for _, s := range txn.secondaryRows {
-		l.addSecondaryColumn()
+	for _, c := range txn.secondary {
+		l.addSecondaryColumn(c, txn.mutationCache.getMutation(c).typ)
 	}
 	return l
 }
@@ -152,7 +153,6 @@ func (txn *Txn) prewriteRowWithLockClean(tbl []byte, mutation *rowMutation, cont
 
 func (txn *Txn) prewriteRow(tbl []byte, mutation *rowMutation, containPrimary bool) ThemisLock {
 	if containPrimary {
-		txn.themisCli.prewriteRow(tbl, mutation.row, mutation.mutationList(), txn.startTs, constructPi
 	}
 	return nil
 }
