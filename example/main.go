@@ -33,6 +33,9 @@ func main() {
 	tx.Put("CashTable", themis.NewThemisPut(put))
 	tx.Put("CashTable", themis.NewThemisPut(put2))
 
-	tx.Commit()
+	err = tx.Commit()
+	if err != nil {
+		log.Error(err)
+	}
 
 }

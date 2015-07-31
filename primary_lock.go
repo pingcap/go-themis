@@ -26,8 +26,12 @@ func (l *PrimaryLock) addSecondaryColumn(col *columnCoordinate, t Type) {
 
 func (l *PrimaryLock) toBytes() []byte {
 	buf := bytes.NewBuffer(nil)
+	// set is primary
 	binary.Write(buf, binary.BigEndian, uint8(1))
 	l.lock.write(buf)
+
+	// write secondaries
+	binary.Write(buf, binary.BigEndian, int32(len(l.secondaries)))
 	for k, v := range l.secondaries {
 		c := &columnCoordinate{}
 		c.parserFromString(k)

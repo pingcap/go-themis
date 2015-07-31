@@ -17,6 +17,7 @@ type lock struct {
 	wallTs     uint64
 	clientAddr string
 	expired    bool
+	column     *columnCoordinate
 }
 
 func (l *lock) write(w io.Writer) {
@@ -28,10 +29,18 @@ func (l *lock) write(w io.Writer) {
 }
 
 type ThemisLock interface {
+	getTimestamp() uint64
+	setExpired(bool)
 	isExpired() bool
 	isPrimary() bool
+	setColumn(col *columnCoordinate)
+	getColumn() *columnCoordinate
 	toBytes() []byte
 	parseField(r ByteMultiReader) error
+}
+
+func (l *lock) getTimestamp() uint64 {
+	return l.ts
 }
 
 func (l *lock) parseField(r ByteMultiReader) error {
@@ -70,6 +79,18 @@ func (l *lock) parseField(r ByteMultiReader) error {
 	return nil
 }
 
+func (l *lock) setColumn(col *columnCoordinate) {
+	l.column = col
+}
+
+func (l *lock) getColumn() *columnCoordinate {
+	return l.column
+}
+
+func (l *lock) setExpired(b bool) {
+	l.expired = b
+}
+
 func parseLockFromBytes(b []byte) (ThemisLock, error) {
 	buf := bytes.NewBuffer(b)
 	var isPrimary uint8
@@ -77,24 +98,15 @@ func parseLockFromBytes(b []byte) (ThemisLock, error) {
 	if err != nil {
 		return nil, err
 	}
+	var ret ThemisLock
 	if isPrimary == 1 {
-		ret := newPrimaryLock()
-		err = ret.parseField(buf)
-		if err != nil {
-			return nil, err
-		}
-		return ret, nil
+		ret = newPrimaryLock()
 	} else {
-		ret := newSecondaryLock()
-		err = ret.parseField(buf)
-		if err != nil {
-			return nil, err
-		}
-		err = ret.primaryCoordinate.parseField(buf)
-		if err != nil {
-			return nil, err
-		}
-		return ret, nil
+		ret = newSecondaryLock()
 	}
-	return nil, nil
+	err = ret.parseField(buf)
+	if err != nil {
+		return nil, err
+	}
+	return ret, nil
 }

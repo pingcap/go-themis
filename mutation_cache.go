@@ -2,7 +2,9 @@ package themis
 
 import (
 	"fmt"
+	"sort"
 
+	"github.com/ngaut/log"
 	"github.com/pingcap/go-themis/proto"
 )
 
@@ -80,7 +82,13 @@ func (r *rowMutation) addMutation(c *column, typ Type, val []byte) {
 
 func (r *rowMutation) mutationList() []*columnMutation {
 	var ret []*columnMutation
-	for k, v := range r.mutations {
+	var keys []string
+	for k, _ := range r.mutations {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		v := r.mutations[k]
 		c := &column{}
 		c.parseFromString(k)
 		ret = append(ret, &columnMutation{
@@ -88,6 +96,7 @@ func (r *rowMutation) mutationList() []*columnMutation {
 			mutationValuePair: v,
 		})
 	}
+	log.Warning(string(r.row))
 	return ret
 }
 

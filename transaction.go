@@ -34,14 +34,18 @@ func NewTxn(c *Client) *Txn {
 }
 
 func isLockResult(r *ResultRow) bool {
-	if len(r.SortedColumns) > 0 && isLockColumn(r.SortedColumns[0]) {
+	col := &column{
+		family: r.SortedColumns[0].Family,
+		qual:   r.SortedColumns[0].Qualifier,
+	}
+	if len(r.SortedColumns) > 0 && isLockColumn(col) {
 		return true
 	}
 	return false
 }
 
-func isLockColumn(c *ResultRowColumn) bool {
-	if bytes.Compare(c.Family, LockFamilyName) == 0 {
+func isLockColumn(c *column) bool {
+	if bytes.Compare(c.family, LockFamilyName) == 0 {
 		return true
 	}
 	return false
@@ -58,7 +62,7 @@ func cleanLock(l ThemisLock) {
 func tryCleanLock(table string, lockKvs *ResultRow) error {
 	// TODO
 	for _, c := range lockKvs.SortedColumns {
-		if isLockColumn(c) {
+		if isLockColumn(&column{c.Family, c.Qualifier}) {
 			_, err := parseLockFromBytes([]byte(c.Value))
 			if err != nil {
 				return err
@@ -84,7 +88,10 @@ func (txn *Txn) Commit() error {
 	}
 
 	txn.selectPrepareAndSecondary()
-	txn.prewritePrimary()
+	err := txn.prewritePrimary()
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -103,6 +110,7 @@ func (txn *Txn) selectPrepareAndSecondary() {
 					txn.primaryRowOffset = i
 					txn.primaryRow = rowMutation
 					findPrimaryInRow = true
+					log.Warning(i, string(txn.primaryRow.row))
 				} else {
 					txn.secondary = append(txn.secondary, colcord)
 				}
@@ -147,17 +155,28 @@ func (txn *Txn) constructPrimaryLock() *PrimaryLock {
 	return l
 }
 
-func (txn *Txn) prewriteRowWithLockClean(tbl []byte, mutation *rowMutation, containPrimary bool) {
-	txn.prewriteRow(tbl, mutation, containPrimary)
-}
-
-func (txn *Txn) prewriteRow(tbl []byte, mutation *rowMutation, containPrimary bool) ThemisLock {
-	if containPrimary {
-		txn.themisCli.prewriteRow(tbl, mutation.row, mutation.mutationList(), txn.startTs, txn.constructPrimaryLock().toBytes(), txn.secondaryLockBytes, txn.primaryRowOffset)
+func (txn *Txn) prewriteRowWithLockClean(tbl []byte, mutation *rowMutation, containPrimary bool) error {
+	_, err := txn.prewriteRow(tbl, mutation, containPrimary)
+	if err != nil {
+		return err
 	}
 	return nil
 }
 
-func (txn *Txn) prewritePrimary() {
-	txn.prewriteRowWithLockClean(txn.primary.table, txn.primaryRow, true)
+func (txn *Txn) prewriteRow(tbl []byte, mutation *rowMutation, containPrimary bool) (ThemisLock, error) {
+	if containPrimary {
+		_, err := txn.themisCli.prewriteRow(tbl, mutation.row, mutation.mutationList(), txn.startTs, txn.constructPrimaryLock().toBytes(), txn.secondaryLockBytes, txn.primaryRowOffset)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return nil, nil
+}
+
+func (txn *Txn) prewritePrimary() error {
+	err := txn.prewriteRowWithLockClean(txn.primary.table, txn.primaryRow, true)
+	if err != nil {
+		return err
+	}
+	return nil
 }

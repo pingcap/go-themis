@@ -72,6 +72,12 @@ func (t *themisClient) prewriteRow(tbl []byte, row []byte, mutations []*columnMu
 		return nil, err
 	}
 	b := res.GetResult()
+	if b == nil {
+		// if lock is empty, means we got the lock, otherwise some one else had
+		// locked this row, and the lock should return in rpc result
+		return nil, nil
+	}
+	// Oops, some one else have already lock this row.
 	// b[0]=>commitTs b[1] => lockbytes b[2]=>family b[3]=>qual b[4]=>isExpired
 	// if b[0] != 0 means encounter conflict
 	buf := bytes.NewBuffer(b[0])
@@ -82,12 +88,43 @@ func (t *themisClient) prewriteRow(tbl []byte, row []byte, mutations []*columnMu
 	if commitTs != 0 {
 		return nil, errors.New("encounter conflict")
 	}
-	col := &columnCoordinate{
-		table:  tbl,
-		row:    row,
-		family: b[2],
-		qual:   b[3],
+	l, err := parseLockFromBytes(b[1])
+	if err != nil {
+		return nil, err
 	}
-	//TODO create themis lock
-	return nil, nil
+	col := &columnCoordinate{
+		table: tbl,
+		row:   row,
+		column: column{
+			family: b[2],
+			qual:   b[3],
+		},
+	}
+	l.setColumn(col)
+	return l, nil
+}
+
+func (t *themisClient) isLockExpired(tbl, row []byte, ts uint64) (bool, error) {
+	req := &proto.LockExpiredRequest{
+		Timestamp: pb.Uint64(ts),
+	}
+	param, _ := pb.Marshal(req)
+	call := &CoprocessorServiceCall{
+		row:          row,
+		serviceName:  ThemisServiceName,
+		methodName:   "isLockExpired",
+		requestParam: param,
+	}
+
+	r, err := t.client.ServiceCall(string(tbl), call)
+	if err != nil {
+		return false, err
+	}
+
+	var res proto.LockExpiredResponse
+	err = pb.Unmarshal(r.GetValue().GetValue(), &res)
+	if err != nil {
+		return false, err
+	}
+	return res.GetExpired(), nil
 }
