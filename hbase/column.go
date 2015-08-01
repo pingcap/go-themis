@@ -70,7 +70,7 @@ func (c *ColumnCoordinate) String() string {
 	return fmt.Sprintf("%s:%s:%s:%s", c.Table, c.Row, c.Family, c.Qual)
 }
 
-func (c *ColumnCoordinate) ParserFromString(s string) {
+func (c *ColumnCoordinate) ParseFromString(s string) {
 	parts := strings.Split(s, ":")
 	if len(parts) == 4 {
 		c.Table = []byte(parts[0])
