@@ -3,6 +3,9 @@ package themis
 import (
 	"bytes"
 	"encoding/binary"
+
+	"github.com/pingcap/go-themis/hbase"
+	"github.com/pingcap/go-themis/iohelper"
 )
 
 type PrimaryLock struct {
@@ -20,7 +23,7 @@ func newPrimaryLock() *PrimaryLock {
 	}
 }
 
-func (l *PrimaryLock) addSecondaryColumn(col *columnCoordinate, t Type) {
+func (l *PrimaryLock) addSecondaryColumn(col *hbase.ColumnCoordinate, t Type) {
 	l.secondaries[col.String()] = t
 }
 
@@ -33,9 +36,9 @@ func (l *PrimaryLock) toBytes() []byte {
 	// write secondaries
 	binary.Write(buf, binary.BigEndian, int32(len(l.secondaries)))
 	for k, v := range l.secondaries {
-		c := &columnCoordinate{}
-		c.parserFromString(k)
-		c.write(buf)
+		c := &hbase.ColumnCoordinate{}
+		c.ParserFromString(k)
+		c.Write(buf)
 		buf.WriteByte(uint8(v))
 	}
 	return buf.Bytes()
@@ -45,7 +48,7 @@ func (l *PrimaryLock) isExpired() bool {
 	return l.lock.expired
 }
 
-func (l *PrimaryLock) getSecondaryColumnType(c *columnCoordinate) Type {
+func (l *PrimaryLock) getSecondaryColumnType(c *hbase.ColumnCoordinate) Type {
 	v, ok := l.secondaries[c.String()]
 	if !ok {
 		return TypeMinimum
@@ -57,7 +60,7 @@ func (l *PrimaryLock) isPrimary() bool {
 	return true
 }
 
-func (l *PrimaryLock) parseField(buf ByteMultiReader) error {
+func (l *PrimaryLock) parseField(buf iohelper.ByteMultiReader) error {
 	l.lock.parseField(buf)
 	var sz int32
 	err := binary.Read(buf, binary.BigEndian, &sz)
@@ -65,8 +68,8 @@ func (l *PrimaryLock) parseField(buf ByteMultiReader) error {
 		return err
 	}
 	for i := 0; i < int(sz); i++ {
-		c := &columnCoordinate{}
-		c.parseField(buf)
+		c := &hbase.ColumnCoordinate{}
+		c.ParseField(buf)
 		b, err := buf.ReadByte()
 		if err != nil {
 			return err

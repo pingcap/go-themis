@@ -3,62 +3,54 @@ package themis
 import (
 	"errors"
 	"strings"
+
+	"github.com/pingcap/go-themis/hbase"
 )
 
-func checkAndSetLockIsExpired(lock ThemisLock, client *themisClient, TTL uint64) (bool, error) {
-	b, err := client.isLockExpired(lock.getColumn().table, lock.getColumn().row, lock.getTimestamp())
-	if err != nil {
-		return false, err
-	}
-	lock.setExpired(b)
-	return b, nil
-}
-
-func getDataColFromMetaCol(lockOrWriteCol *column) (*column, error) {
+func getDataColFromMetaCol(lockOrWriteCol hbase.Column) hbase.Column {
 	// get data column from lock column
 	// key is like => L:family#qual, #p:family#qual
-	parts := strings.Split(string(lockOrWriteCol.qual), "#")
+	parts := strings.Split(string(lockOrWriteCol.Qual), "#")
 	if len(parts) != 2 {
-		return lockOrWriteCol, nil
+		return lockOrWriteCol
 	}
-	c := &column{
-		family: []byte(parts[0]),
-		qual:   []byte(parts[1]),
+	c := hbase.Column{
+		Family: []byte(parts[0]),
+		Qual:   []byte(parts[1]),
 	}
-	return c, nil
+	return c
 }
 
-func constructLocks(tbl []byte, lockKvs []*Kv, client *themisClient, TTL uint64) ([]ThemisLock, error) {
+func constructLocks(tbl []byte, lockKvs []*hbase.Kv, client *themisClient, TTL uint64) ([]ThemisLock, error) {
 	var locks []ThemisLock
 	for _, kv := range lockKvs {
-		col := &columnCoordinate{
-			table: tbl,
-			row:   kv.row,
-			column: column{
-				family: kv.family,
-				qual:   kv.qual,
+		col := &hbase.ColumnCoordinate{
+			Table: tbl,
+			Row:   kv.Row,
+			Column: hbase.Column{
+				Family: kv.Family,
+				Qual:   kv.Qual,
 			},
 		}
-		if !isLockColumn(&col.column) {
+		if !isLockColumn(&col.Column) {
 			return nil, errors.New("invalid lock")
 		}
-		l, err := parseLockFromBytes(kv.val)
+		l, err := parseLockFromBytes(kv.Value)
 		if err != nil {
 			return nil, err
 		}
-		dataCol, _ := getDataColFromMetaCol(&col.column)
-		cc := &columnCoordinate{
-			table:  tbl,
-			row:    kv.row,
-			column: *dataCol,
+		cc := &hbase.ColumnCoordinate{
+			Table:  tbl,
+			Row:    kv.Row,
+			Column: getDataColFromMetaCol(col.Column),
 		}
 		l.setColumn(cc)
-		checkAndSetLockIsExpired(l, client, TTL)
+		client.checkAndSetLockIsExpired(l, TTL)
 		locks = append(locks, l)
 	}
 	return locks, nil
 }
 
-func tryToCleanLock(tbl []byte, lockKvs []*Kv, cli *themisClient) error {
+func tryToCleanLock(tbl []byte, lockKvs []*hbase.Kv, cli *themisClient) error {
 	return nil
 }

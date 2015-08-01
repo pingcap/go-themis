@@ -1,4 +1,4 @@
-package themis
+package hbase
 
 import (
 	pb "github.com/golang/protobuf/proto"
@@ -11,16 +11,16 @@ import (
 )
 
 type Delete struct {
-	key        []byte
-	families   [][]byte
-	qualifiers [][][]byte
+	Row        []byte
+	Families   [][]byte
+	Qualifiers [][][]byte
 }
 
-func CreateNewDelete(key []byte) *Delete {
+func CreateNewDelete(row []byte) *Delete {
 	return &Delete{
-		key:        key,
-		families:   make([][]byte, 0),
-		qualifiers: make([][][]byte, 0),
+		Row:        row,
+		Families:   make([][]byte, 0),
+		Qualifiers: make([][][]byte, 0),
 	}
 }
 
@@ -38,6 +38,10 @@ func (d *Delete) AddString(famqual string) error {
 	return nil
 }
 
+func (d *Delete) GetRow() []byte {
+	return d.Row
+}
+
 func (d *Delete) AddStringColumn(family, qual string) {
 	d.AddColumn([]byte(family), []byte(qual))
 }
@@ -49,20 +53,20 @@ func (d *Delete) AddStringFamily(family string) {
 func (d *Delete) AddColumn(family, qual []byte) {
 	d.AddFamily(family)
 	pos := d.posOfFamily(family)
-	d.qualifiers[pos] = append(d.qualifiers[pos], qual)
+	d.Qualifiers[pos] = append(d.Qualifiers[pos], qual)
 }
 
 func (d *Delete) AddFamily(family []byte) {
 	pos := d.posOfFamily(family)
 
 	if pos == -1 {
-		d.families = append(d.families, family)
-		d.qualifiers = append(d.qualifiers, make([][]byte, 0))
+		d.Families = append(d.Families, family)
+		d.Qualifiers = append(d.Qualifiers, make([][]byte, 0))
 	}
 }
 
 func (d *Delete) posOfFamily(family []byte) int {
-	for p, v := range d.families {
+	for p, v := range d.Families {
 		if bytes.Equal(family, v) {
 			return p
 		}
@@ -70,19 +74,19 @@ func (d *Delete) posOfFamily(family []byte) int {
 	return -1
 }
 
-func (d *Delete) toProto() pb.Message {
+func (d *Delete) ToProto() pb.Message {
 	del := &proto.MutationProto{
-		Row:        d.key,
+		Row:        d.Row,
 		MutateType: proto.MutationProto_DELETE.Enum(),
 	}
 
-	for i, v := range d.families {
+	for i, v := range d.Families {
 		cv := &proto.MutationProto_ColumnValue{
 			Family:         v,
 			QualifierValue: make([]*proto.MutationProto_ColumnValue_QualifierValue, 0),
 		}
 
-		if len(d.qualifiers[i]) == 0 {
+		if len(d.Qualifiers[i]) == 0 {
 			cv.QualifierValue = append(cv.QualifierValue, &proto.MutationProto_ColumnValue_QualifierValue{
 				Qualifier:  nil,
 				Timestamp:  pb.Uint64(uint64(math.MaxInt64)),
@@ -90,7 +94,7 @@ func (d *Delete) toProto() pb.Message {
 			})
 		}
 
-		for _, v := range d.qualifiers[i] {
+		for _, v := range d.Qualifiers[i] {
 			cv.QualifierValue = append(cv.QualifierValue, &proto.MutationProto_ColumnValue_QualifierValue{
 				Qualifier:  v,
 				Timestamp:  pb.Uint64(uint64(math.MaxInt64)),
@@ -102,16 +106,4 @@ func (d *Delete) toProto() pb.Message {
 	}
 
 	return del
-}
-
-func (c *Client) Delete(table string, del *Delete) (bool, error) {
-	ch := c.action([]byte(table), del.key, del, true, 0)
-
-	response := <-ch
-	switch r := response.(type) {
-	case *proto.MutateResponse:
-		return r.GetProcessed(), nil
-	}
-
-	return false, fmt.Errorf("No valid response seen [response: %#v]", response)
 }

@@ -1,4 +1,4 @@
-package themis
+package iohelper
 
 import (
 	"encoding/binary"
@@ -6,52 +6,51 @@ import (
 	pb "github.com/golang/protobuf/proto"
 )
 
-type outputBuffer struct {
+type PbBuffer struct {
 	b []byte
 }
 
-func newOutputBuffer() *outputBuffer {
+func NewPbBuffer() *PbBuffer {
 	b := []byte{}
-
-	return &outputBuffer{
+	return &PbBuffer{
 		b: b,
 	}
 }
 
-func (b *outputBuffer) Bytes() []byte {
+func (b *PbBuffer) Bytes() []byte {
 	return b.b
 }
 
-func (b *outputBuffer) Write(d []byte) (int, error) {
+func (b *PbBuffer) Write(d []byte) (int, error) {
 	b.b = append(b.b, d...)
 	return len(d), nil
 }
 
-func (b *outputBuffer) WriteByte(d byte) error {
+func (b *PbBuffer) WriteByte(d byte) error {
 	return binary.Write(b, binary.BigEndian, d)
 }
 
-func (b *outputBuffer) WriteString(d string) error {
+func (b *PbBuffer) WriteString(d string) error {
 	return binary.Write(b, binary.BigEndian, d)
 }
 
-func (b *outputBuffer) WriteInt32(d int32) error {
+func (b *PbBuffer) WriteInt32(d int32) error {
 	return binary.Write(b, binary.BigEndian, d)
 }
 
-func (b *outputBuffer) WriteInt64(d int64) error {
+func (b *PbBuffer) WriteInt64(d int64) error {
 	return binary.Write(b, binary.BigEndian, d)
 }
 
-func (b *outputBuffer) WriteFloat32(d float32) error {
+func (b *PbBuffer) WriteFloat32(d float32) error {
 	return binary.Write(b, binary.BigEndian, d)
 }
 
-func (b *outputBuffer) WriteFloat64(d float64) error {
+func (b *PbBuffer) WriteFloat64(d float64) error {
 	return binary.Write(b, binary.BigEndian, d)
 }
 
-func (b *outputBuffer) WriteVarint32(n int32) error {
+func (b *PbBuffer) WriteVarint32(n int32) error {
 	for true {
 		if (n & 0x7F) == 0 {
 			b.WriteByte(byte(n))
@@ -65,7 +64,7 @@ func (b *outputBuffer) WriteVarint32(n int32) error {
 	return nil
 }
 
-func (b *outputBuffer) WritePBMessage(d pb.Message) error {
+func (b *PbBuffer) WritePBMessage(d pb.Message) error {
 	buf, err := pb.Marshal(d)
 	if err != nil {
 		return err
@@ -75,7 +74,7 @@ func (b *outputBuffer) WritePBMessage(d pb.Message) error {
 	return err
 }
 
-func (b *outputBuffer) writeDelimitedBuffers(bufs ...*outputBuffer) error {
+func (b *PbBuffer) WriteDelimitedBuffers(bufs ...*PbBuffer) error {
 	totalLength := 0
 	lens := make([][]byte, len(bufs))
 	for i, v := range bufs {
@@ -96,9 +95,9 @@ func (b *outputBuffer) writeDelimitedBuffers(bufs ...*outputBuffer) error {
 	return nil
 }
 
-func (b *outputBuffer) PrependSize() error {
+func (b *PbBuffer) PrependSize() error {
 	size := int32(len(b.b))
-	newBuf := newOutputBuffer()
+	newBuf := NewPbBuffer()
 
 	err := newBuf.WriteInt32(size)
 	if err != nil {

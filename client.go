@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	pb "github.com/golang/protobuf/proto"
+	"github.com/pingcap/go-themis/hbase"
 	"github.com/pingcap/go-themis/proto"
 
 	"bytes"
@@ -170,9 +171,9 @@ func (c *Client) createRegionName(table, startKey []byte, id string, newFormat b
 	return b
 }
 
-func (c *Client) parseRegion(rr *ResultRow) *RegionInfo {
+func (c *Client) parseRegion(rr *hbase.ResultRow) *RegionInfo {
 	if regionInfoCol, ok := rr.Columns["info:regioninfo"]; ok {
-		offset := strings.Index(regionInfoCol.Value.String(), "PBUF") + 4
+		offset := strings.Index(string(regionInfoCol.Value), "PBUF") + 4
 		regionInfoBytes := regionInfoCol.Value[offset:]
 
 		var info proto.RegionInfo
@@ -182,16 +183,16 @@ func (c *Client) parseRegion(rr *ResultRow) *RegionInfo {
 			log.Errorf("Unable to parse region location: %#v", err)
 		}
 
-		log.Debugf("Parsed region info [name=%s]", rr.Row.String())
+		log.Debugf("Parsed region info [name=%s]", rr.Row)
 
 		return &RegionInfo{
-			Server:         rr.Columns["info:server"].Value.String(),
+			Server:         string(rr.Columns["info:server"].Value),
 			StartKey:       info.GetStartKey(),
 			EndKey:         info.GetEndKey(),
-			Name:           rr.Row.String(),
+			Name:           string(rr.Row),
 			TableNamespace: string(info.GetTableName().GetNamespace()),
 			TableName:      string(info.GetTableName().GetQualifier()),
-			Ts:             rr.Columns["info:server"].Timestamp.String(),
+			//Ts:             rr.Columns["info:server"].Ts,
 		}
 	}
 
@@ -238,7 +239,7 @@ func (c *Client) locateRegion(table, row []byte, useCache bool) *RegionInfo {
 
 	switch r := response.(type) {
 	case *proto.GetResponse:
-		rr := newResultRow(r.GetResult())
+		rr := hbase.NewResultRow(r.GetResult())
 		if region := c.parseRegion(rr); region != nil {
 			log.Debugf("Found region [region: %s]", region.Name)
 			//c.cacheLocation(table, region)
@@ -249,4 +250,44 @@ func (c *Client) locateRegion(table, row []byte, useCache bool) *RegionInfo {
 	log.Debugf("Couldn't find the region: [table=%s] [row=%s] [region_row=%s]", table, row, regionRow)
 
 	return nil
+}
+
+func (c *Client) Delete(table string, del *hbase.Delete) (bool, error) {
+	ch := c.action([]byte(table), del.GetRow(), del, true, 0)
+
+	response := <-ch
+	switch r := response.(type) {
+	case *proto.MutateResponse:
+		return r.GetProcessed(), nil
+	}
+
+	return false, fmt.Errorf("No valid response seen [response: %#v]", response)
+}
+
+func (c *Client) Get(table string, get *hbase.Get) (*hbase.ResultRow, error) {
+	ch := c.action([]byte(table), get.GetRow(), get, true, 0)
+	if ch == nil {
+		return nil, fmt.Errorf("Create region server connection failed")
+	}
+
+	response := <-ch
+	switch r := response.(type) {
+	case *proto.GetResponse:
+		return hbase.NewResultRow(r.GetResult()), nil
+	case *exception:
+		return nil, errors.New(r.msg)
+	}
+	return nil, fmt.Errorf("No valid response seen [response: %#v]", response)
+}
+
+func (c *Client) Put(table string, put *hbase.Put) (bool, error) {
+	ch := c.action([]byte(table), put.GetRow(), put, true, 0)
+
+	response := <-ch
+	switch r := response.(type) {
+	case *proto.MutateResponse:
+		return r.GetProcessed(), nil
+	}
+
+	return false, fmt.Errorf("No valid response seen [response: %#v]", response)
 }

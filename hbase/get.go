@@ -1,8 +1,6 @@
-package themis
+package hbase
 
 import (
-	"errors"
-
 	pb "github.com/golang/protobuf/proto"
 	"github.com/pingcap/go-themis/proto"
 
@@ -12,21 +10,25 @@ import (
 )
 
 type Get struct {
-	key        []byte
+	row        []byte
 	families   [][]byte
 	qualifiers [][][]byte
 	versions   int32
 }
 
-func CreateNewGet(key []byte) *Get {
+func CreateNewGet(row []byte) *Get {
 	return &Get{
-		key: key,
+		row: row,
 		// [cf1, cf2, cf3...]
 		families: make([][]byte, 0),
 		// cf1 pos->[c1, c2], cf2 pos -> [c1]
 		qualifiers: make([][][]byte, 0),
 		versions:   1,
 	}
+}
+
+func (g *Get) GetRow() []byte {
+	return g.row
 }
 
 func (g *Get) AddString(famqual string) error {
@@ -74,9 +76,9 @@ func (g *Get) posOfFamily(family []byte) int {
 	return -1
 }
 
-func (g *Get) toProto() pb.Message {
+func (g *Get) ToProto() pb.Message {
 	get := &proto.Get{
-		Row: g.key,
+		Row: g.row,
 	}
 
 	for i, v := range g.families {
@@ -89,20 +91,4 @@ func (g *Get) toProto() pb.Message {
 	get.MaxVersions = pb.Uint32(uint32(g.versions))
 
 	return get
-}
-
-func (c *Client) Get(table string, get *Get) (*ResultRow, error) {
-	ch := c.action([]byte(table), get.key, get, true, 0)
-	if ch == nil {
-		return nil, fmt.Errorf("Create region server connection failed")
-	}
-
-	response := <-ch
-	switch r := response.(type) {
-	case *proto.GetResponse:
-		return newResultRow(r.GetResult()), nil
-	case *exception:
-		return nil, errors.New(r.msg)
-	}
-	return nil, fmt.Errorf("No valid response seen [response: %#v]", response)
 }

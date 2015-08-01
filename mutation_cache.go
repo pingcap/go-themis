@@ -5,6 +5,7 @@ import (
 	"sort"
 
 	"github.com/ngaut/log"
+	"github.com/pingcap/go-themis/hbase"
 	"github.com/pingcap/go-themis/proto"
 )
 
@@ -30,14 +31,14 @@ func (mp *mutationValuePair) String() string {
 }
 
 type columnMutation struct {
-	*column
+	*hbase.Column
 	*mutationValuePair
 }
 
 func (cm *columnMutation) toCell() *proto.Cell {
 	ret := &proto.Cell{
-		Family:    cm.family,
-		Qualifier: cm.qual,
+		Family:    cm.Family,
+		Qualifier: cm.Qual,
 		Value:     cm.value,
 	}
 	if cm.typ == TypePut {
@@ -58,7 +59,7 @@ func (r *rowMutation) getSize() int {
 	return len(r.mutations)
 }
 
-func (r *rowMutation) getType(c column) Type {
+func (r *rowMutation) getType(c hbase.Column) Type {
 	p, ok := r.mutations[c.String()]
 	if !ok {
 		return TypeMinimum
@@ -73,7 +74,7 @@ func newRowMutation(row []byte) *rowMutation {
 	}
 }
 
-func (r *rowMutation) addMutation(c *column, typ Type, val []byte) {
+func (r *rowMutation) addMutation(c *hbase.Column, typ Type, val []byte) {
 	r.mutations[c.String()] = &mutationValuePair{
 		typ:   typ,
 		value: val,
@@ -89,10 +90,10 @@ func (r *rowMutation) mutationList() []*columnMutation {
 	sort.Strings(keys)
 	for _, k := range keys {
 		v := r.mutations[k]
-		c := &column{}
-		c.parseFromString(k)
+		c := &hbase.Column{}
+		c.ParseFromString(k)
 		ret = append(ret, &columnMutation{
-			column:            c,
+			Column:            c,
 			mutationValuePair: v,
 		})
 	}
@@ -111,7 +112,7 @@ func newColumnMutationCache() *columnMutationCache {
 	}
 }
 
-func (c *columnMutationCache) addMutation(tbl []byte, row []byte, col *column, t Type, v []byte) {
+func (c *columnMutationCache) addMutation(tbl []byte, row []byte, col *hbase.Column, t Type, v []byte) {
 	tblRowMutations, ok := c.mutations[string(tbl)]
 	if !ok {
 		// create table mutation map
@@ -128,16 +129,16 @@ func (c *columnMutationCache) addMutation(tbl []byte, row []byte, col *column, t
 	rowMutations.addMutation(col, t, v)
 }
 
-func (c *columnMutationCache) getMutation(cc *columnCoordinate) *mutationValuePair {
-	t, ok := c.mutations[string(cc.table)]
+func (c *columnMutationCache) getMutation(cc *hbase.ColumnCoordinate) *mutationValuePair {
+	t, ok := c.mutations[string(cc.Table)]
 	if !ok {
 		return nil
 	}
-	rowMutation, ok := t[string(cc.row)]
+	rowMutation, ok := t[string(cc.Row)]
 	if !ok {
 		return nil
 	}
-	p, ok := rowMutation.mutations[cc.getColumn().String()]
+	p, ok := rowMutation.mutations[cc.GetColumn().String()]
 	if !ok {
 		return nil
 	}

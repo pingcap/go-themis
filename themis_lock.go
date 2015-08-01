@@ -4,6 +4,9 @@ import (
 	"bytes"
 	"encoding/binary"
 	"io"
+
+	"github.com/pingcap/go-themis/hbase"
+	"github.com/pingcap/go-themis/iohelper"
 )
 
 var (
@@ -17,14 +20,14 @@ type lock struct {
 	wallTs     uint64
 	clientAddr string
 	expired    bool
-	column     *columnCoordinate
+	column     *hbase.ColumnCoordinate
 }
 
 func (l *lock) write(w io.Writer) {
 	binary.Write(w, binary.BigEndian, byte(l.typ))
 	binary.Write(w, binary.BigEndian, int64(l.ts))
 	// write client addr
-	writeVarBytes(w, []byte(l.clientAddr))
+	iohelper.WriteVarBytes(w, []byte(l.clientAddr))
 	binary.Write(w, binary.BigEndian, int64(l.wallTs))
 }
 
@@ -33,17 +36,17 @@ type ThemisLock interface {
 	setExpired(bool)
 	isExpired() bool
 	isPrimary() bool
-	setColumn(col *columnCoordinate)
-	getColumn() *columnCoordinate
+	setColumn(col *hbase.ColumnCoordinate)
+	getColumn() *hbase.ColumnCoordinate
 	toBytes() []byte
-	parseField(r ByteMultiReader) error
+	parseField(r iohelper.ByteMultiReader) error
 }
 
 func (l *lock) getTimestamp() uint64 {
 	return l.ts
 }
 
-func (l *lock) parseField(r ByteMultiReader) error {
+func (l *lock) parseField(r iohelper.ByteMultiReader) error {
 	// read type
 	var typ uint8
 	err := binary.Read(r, binary.BigEndian, &typ)
@@ -79,11 +82,11 @@ func (l *lock) parseField(r ByteMultiReader) error {
 	return nil
 }
 
-func (l *lock) setColumn(col *columnCoordinate) {
+func (l *lock) setColumn(col *hbase.ColumnCoordinate) {
 	l.column = col
 }
 
-func (l *lock) getColumn() *columnCoordinate {
+func (l *lock) getColumn() *hbase.ColumnCoordinate {
 	return l.column
 }
 

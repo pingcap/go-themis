@@ -16,7 +16,7 @@ type CoprocessorServiceCall struct {
 	requestParam []byte
 }
 
-func (c *CoprocessorServiceCall) toProto() pb.Message {
+func (c *CoprocessorServiceCall) ToProto() pb.Message {
 	return &proto.CoprocessorServiceCall{
 		Row:         c.row,
 		ServiceName: pb.String(c.serviceName),

@@ -6,6 +6,7 @@ import (
 	"errors"
 
 	pb "github.com/golang/protobuf/proto"
+	"github.com/pingcap/go-themis/hbase"
 	"github.com/pingcap/go-themis/proto"
 )
 
@@ -13,16 +14,25 @@ type themisClient struct {
 	client *Client
 }
 
-func (t *themisClient) themisGet(tbl []byte, g *Get, startTs uint64) (*ResultRow, error) {
+func (t *themisClient) checkAndSetLockIsExpired(lock ThemisLock, TTL uint64) (bool, error) {
+	b, err := t.isLockExpired(lock.getColumn().Table, lock.getColumn().Row, lock.getTimestamp())
+	if err != nil {
+		return false, err
+	}
+	lock.setExpired(b)
+	return b, nil
+}
+
+func (t *themisClient) themisGet(tbl []byte, g *hbase.Get, startTs uint64) (*hbase.ResultRow, error) {
 	requestParam := &proto.ThemisGetRequest{
-		Get:        g.toProto().(*proto.Get),
+		Get:        g.ToProto().(*proto.Get),
 		StartTs:    pb.Uint64(startTs),
 		IgnoreLock: pb.Bool(false),
 	}
 	param, _ := pb.Marshal(requestParam)
 
 	call := &CoprocessorServiceCall{
-		row:          g.key,
+		row:          g.GetRow(),
 		serviceName:  ThemisServiceName,
 		methodName:   "themisGet",
 		requestParam: param,
@@ -37,7 +47,7 @@ func (t *themisClient) themisGet(tbl []byte, g *Get, startTs uint64) (*ResultRow
 	if err != nil {
 		return nil, err
 	}
-	return newResultRow(&res), nil
+	return hbase.NewResultRow(&res), nil
 }
 
 func (t *themisClient) prewriteRow(tbl []byte, row []byte, mutations []*columnMutation, prewriteTs uint64, primaryLockBytes []byte, secondaryLockBytes []byte, primaryOffset int) (ThemisLock, error) {
@@ -77,14 +87,14 @@ func (t *themisClient) prewriteRow(tbl []byte, row []byte, mutations []*columnMu
 		// locked this row, and the lock should return in rpc result
 		return nil, nil
 	}
-	// Oops, some one else have already lock this row.
-	// b[0]=>commitTs b[1] => lockbytes b[2]=>family b[3]=>qual b[4]=>isExpired
-	// if b[0] != 0 means encounter conflict
+	// Oops, someone else have already locked this row.
+	// the result: b[0]=>commitTs b[1] => lockbytes b[2]=>family b[3]=>qual b[4]=>isExpired
 	buf := bytes.NewBuffer(b[0])
 	var commitTs int64
 	if err := binary.Read(buf, binary.BigEndian, &commitTs); err != nil {
 		return nil, err
 	}
+	// if b[0] != 0 means encounter conflict
 	if commitTs != 0 {
 		return nil, errors.New("encounter conflict")
 	}
@@ -92,12 +102,12 @@ func (t *themisClient) prewriteRow(tbl []byte, row []byte, mutations []*columnMu
 	if err != nil {
 		return nil, err
 	}
-	col := &columnCoordinate{
-		table: tbl,
-		row:   row,
-		column: column{
-			family: b[2],
-			qual:   b[3],
+	col := &hbase.ColumnCoordinate{
+		Table: tbl,
+		Row:   row,
+		Column: hbase.Column{
+			Family: b[2],
+			Qual:   b[3],
 		},
 	}
 	l.setColumn(col)

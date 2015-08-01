@@ -3,11 +3,12 @@ package themis
 import (
 	pb "github.com/golang/protobuf/proto"
 	"github.com/ngaut/log"
+	"github.com/pingcap/go-themis/hbase"
 	"github.com/pingcap/go-themis/proto"
 )
 
 type action interface {
-	toProto() pb.Message
+	ToProto() pb.Message
 }
 
 func (c *Client) action(table, row []byte, action action, useCache bool, retries int) chan pb.Message {
@@ -25,20 +26,21 @@ func (c *Client) action(table, row []byte, action action, useCache bool, retries
 
 	var cl *call = nil
 	switch a := action.(type) {
-	case *Get:
+	case *hbase.Get:
 		cl = newCall(&proto.GetRequest{
 			Region: regionSpecifier,
-			Get:    a.toProto().(*proto.Get),
+			Get:    a.ToProto().(*proto.Get),
 		})
-	case *Put:
+	case *hbase.Put:
 		cl = newCall(&proto.MutateRequest{
 			Region:   regionSpecifier,
-			Mutation: a.toProto().(*proto.MutationProto),
+			Mutation: a.ToProto().(*proto.MutationProto),
 		})
+
 	case *CoprocessorServiceCall:
 		cl = newCall(&proto.CoprocessorServiceRequest{
 			Region: regionSpecifier,
-			Call:   a.toProto().(*proto.CoprocessorServiceCall),
+			Call:   a.ToProto().(*proto.CoprocessorServiceCall),
 		})
 	}
 

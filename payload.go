@@ -8,19 +8,8 @@ import (
 
 	pb "github.com/golang/protobuf/proto"
 	"github.com/ngaut/log"
+	"github.com/pingcap/go-themis/iohelper"
 )
-
-func readInt32(r io.Reader) (int32, error) {
-	var n int32
-	err := binary.Read(r, binary.BigEndian, &n)
-	return n, err
-}
-
-func readN(r io.Reader, n int32) ([]byte, error) {
-	b := make([]byte, n)
-	_, err := io.ReadFull(r, b)
-	return b, err
-}
 
 func processMessage(msg []byte) [][]byte {
 	buf := pb.NewBuffer(msg)
@@ -41,13 +30,13 @@ func processMessage(msg []byte) [][]byte {
 }
 
 func readPayloads(r io.Reader) ([][]byte, error) {
-	nBytesExpecting, err := readInt32(r)
+	nBytesExpecting, err := iohelper.ReadInt32(r)
 	if err != nil {
 		return nil, err
 	}
 
 	if nBytesExpecting > 0 {
-		buf, err := readN(r, nBytesExpecting)
+		buf, err := iohelper.ReadN(r, nBytesExpecting)
 
 		if err != nil && err == io.EOF {
 			return nil, err

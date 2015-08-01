@@ -4,6 +4,7 @@ import (
 	"bytes"
 
 	"github.com/ngaut/log"
+	"github.com/pingcap/go-themis/hbase"
 	"github.com/pingcap/go-themis/oracle"
 	"github.com/pingcap/go-themis/oracle/oracles"
 )
@@ -14,9 +15,9 @@ type Txn struct {
 	mutationCache      *columnMutationCache
 	startTs            uint64
 	primaryRow         *rowMutation
-	primary            *columnCoordinate
+	primary            *hbase.ColumnCoordinate
 	secondaryRows      []*rowMutation
-	secondary          []*columnCoordinate
+	secondary          []*hbase.ColumnCoordinate
 	primaryRowOffset   int
 	singleRowTxn       bool
 	secondaryLockBytes []byte
@@ -33,10 +34,10 @@ func NewTxn(c *Client) *Txn {
 	return txn
 }
 
-func isLockResult(r *ResultRow) bool {
-	col := &column{
-		family: r.SortedColumns[0].Family,
-		qual:   r.SortedColumns[0].Qualifier,
+func isLockResult(r *hbase.ResultRow) bool {
+	col := &hbase.Column{
+		Family: r.SortedColumns[0].Family,
+		Qual:   r.SortedColumns[0].Qual,
 	}
 	if len(r.SortedColumns) > 0 && isLockColumn(col) {
 		return true
@@ -44,8 +45,8 @@ func isLockResult(r *ResultRow) bool {
 	return false
 }
 
-func isLockColumn(c *column) bool {
-	if bytes.Compare(c.family, LockFamilyName) == 0 {
+func isLockColumn(c *hbase.Column) bool {
+	if bytes.Compare(c.Family, LockFamilyName) == 0 {
 		return true
 	}
 	return false
@@ -59,10 +60,10 @@ func shouldClean(l ThemisLock) bool {
 func cleanLock(l ThemisLock) {
 }
 
-func tryCleanLock(table string, lockKvs *ResultRow) error {
+func tryCleanLock(table string, lockKvs *hbase.ResultRow) error {
 	// TODO
 	for _, c := range lockKvs.SortedColumns {
-		if isLockColumn(&column{c.Family, c.Qualifier}) {
+		if isLockColumn(&hbase.Column{c.Family, c.Qual}) {
 			_, err := parseLockFromBytes([]byte(c.Value))
 			if err != nil {
 				return err
@@ -72,14 +73,14 @@ func tryCleanLock(table string, lockKvs *ResultRow) error {
 	return nil
 }
 
-func (t *Txn) Get(tbl string, g *ThemisGet) (*ResultRow, error) {
+func (t *Txn) Get(tbl string, g *hbase.Get) (*hbase.ResultRow, error) {
 	return nil, nil
 }
 
-func (txn *Txn) Put(tbl string, p *ThemisPut) {
-	for _, e := range p.put.Entries() {
-		txn.mutationCache.addMutation([]byte(tbl), p.put.key, e.column, e.typ, e.value)
-	}
+func (txn *Txn) Put(tbl string, p *hbase.Put) {
+	//for _, e := range p.Entries() {
+	//	txn.mutationCache.addMutation([]byte(tbl), p.put.key, e.column, e.typ, e.value)
+	//}
 }
 
 func (txn *Txn) Commit() error {
@@ -102,10 +103,10 @@ func (txn *Txn) selectPrepareAndSecondary() {
 			row := rowMutation.row
 			findPrimaryInRow := false
 			for i, mutation := range rowMutation.mutationList() {
-				colcord := newColumnCoordinate([]byte(tblName), row, mutation.family, mutation.qual)
+				colcord := hbase.NewColumnCoordinate([]byte(tblName), row, mutation.Family, mutation.Qual)
 				// set the first column as primary if primary is not set by user
 				if txn.primaryRowOffset == -1 &&
-					(txn.primary == nil || txn.primary.equal(colcord)) {
+					(txn.primary == nil || txn.primary.Equal(colcord)) {
 					txn.primary = colcord
 					txn.primaryRowOffset = i
 					txn.primaryRow = rowMutation
@@ -147,7 +148,7 @@ func (txn *Txn) constructSecondaryLock(typ Type) *SecondaryLock {
 
 func (txn *Txn) constructPrimaryLock() *PrimaryLock {
 	l := newPrimaryLock()
-	l.typ = txn.primaryRow.getType(txn.primary.column)
+	l.typ = txn.primaryRow.getType(txn.primary.Column)
 	l.ts = txn.startTs
 	for _, c := range txn.secondary {
 		l.addSecondaryColumn(c, txn.mutationCache.getMutation(c).typ)
@@ -174,7 +175,7 @@ func (txn *Txn) prewriteRow(tbl []byte, mutation *rowMutation, containPrimary bo
 }
 
 func (txn *Txn) prewritePrimary() error {
-	err := txn.prewriteRowWithLockClean(txn.primary.table, txn.primaryRow, true)
+	err := txn.prewriteRowWithLockClean(txn.primary.Table, txn.primaryRow, true)
 	if err != nil {
 		return err
 	}

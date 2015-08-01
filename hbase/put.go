@@ -1,8 +1,6 @@
-package themis
+package hbase
 
 import (
-	"fmt"
-
 	pb "github.com/golang/protobuf/proto"
 	"github.com/pingcap/go-themis/proto"
 
@@ -10,19 +8,23 @@ import (
 )
 
 type Put struct {
-	key        []byte
+	row        []byte
 	families   [][]byte
 	qualifiers [][][]byte
 	values     [][][]byte
 }
 
-func CreateNewPut(key []byte) *Put {
+func CreateNewPut(row []byte) *Put {
 	return &Put{
-		key:        key,
+		row:        row,
 		families:   make([][]byte, 0),
 		qualifiers: make([][][]byte, 0),
 		values:     make([][][]byte, 0),
 	}
+}
+
+func (p *Put) GetRow() []byte {
+	return p.row
 }
 
 func (p *Put) AddValue(family, qual, value []byte) {
@@ -53,6 +55,7 @@ func (p *Put) posOfFamily(family []byte) int {
 	return -1
 }
 
+/*
 func (p *Put) Entries() []*columnMutation {
 	var ret []*columnMutation
 	for i, f := range p.families {
@@ -73,10 +76,11 @@ func (p *Put) Entries() []*columnMutation {
 	}
 	return ret
 }
+*/
 
-func (p *Put) toProto() pb.Message {
+func (p *Put) ToProto() pb.Message {
 	put := &proto.MutationProto{
-		Row:        p.key,
+		Row:        p.row,
 		MutateType: proto.MutationProto_PUT.Enum(),
 	}
 
@@ -96,16 +100,4 @@ func (p *Put) toProto() pb.Message {
 	}
 
 	return put
-}
-
-func (c *Client) Put(table string, put *Put) (bool, error) {
-	ch := c.action([]byte(table), put.key, put, true, 0)
-
-	response := <-ch
-	switch r := response.(type) {
-	case *proto.MutateResponse:
-		return r.GetProcessed(), nil
-	}
-
-	return false, fmt.Errorf("No valid response seen [response: %#v]", response)
 }

@@ -6,6 +6,7 @@ import (
 	"net"
 
 	pb "github.com/golang/protobuf/proto"
+	"github.com/pingcap/go-themis/iohelper"
 	"github.com/pingcap/go-themis/proto"
 )
 
@@ -96,7 +97,7 @@ func (c *connection) writeHead() error {
 }
 
 func (c *connection) writeConnectionHeader() error {
-	buf := newOutputBuffer()
+	buf := iohelper.NewPbBuffer()
 	service := pb.String("ClientService")
 	if c.isMaster {
 		service = pb.String("MasterService")
@@ -135,21 +136,21 @@ func (c *connection) call(request *call) error {
 
 	request.id = uint32(id)
 
-	bfrh := newOutputBuffer()
+	bfrh := iohelper.NewPbBuffer()
 	err := bfrh.WritePBMessage(rh)
 	if err != nil {
 		return err
 	}
 
-	bfr := newOutputBuffer()
+	bfr := iohelper.NewPbBuffer()
 	err = bfr.WritePBMessage(request.request)
 	if err != nil {
 		return err
 	}
 
-	buf := newOutputBuffer()
+	buf := iohelper.NewPbBuffer()
 	//Buf=> | total size | pb1 size| pb1 size | pb2 size | pb2 | ...
-	buf.writeDelimitedBuffers(bfrh, bfr)
+	buf.WriteDelimitedBuffers(bfrh, bfr)
 
 	c.ongoingCalls[id] = request
 	n, err := c.conn.Write(buf.Bytes())
