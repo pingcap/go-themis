@@ -4,23 +4,22 @@ import (
 	pb "github.com/golang/protobuf/proto"
 	"github.com/pingcap/go-themis/proto"
 
-	"bytes"
 	"fmt"
 	"math"
 	"strings"
 )
 
 type Delete struct {
-	Row        []byte
-	Families   [][]byte
-	Qualifiers [][][]byte
+	Row         []byte
+	Families    set
+	FamilyQuals map[string]set
 }
 
 func CreateNewDelete(row []byte) *Delete {
 	return &Delete{
-		Row:        row,
-		Families:   make([][]byte, 0),
-		Qualifiers: make([][][]byte, 0),
+		Row:         row,
+		Families:    newSet(),
+		FamilyQuals: make(map[string]set),
 	}
 }
 
@@ -52,26 +51,14 @@ func (d *Delete) AddStringFamily(family string) {
 
 func (d *Delete) AddColumn(family, qual []byte) {
 	d.AddFamily(family)
-	pos := d.posOfFamily(family)
-	d.Qualifiers[pos] = append(d.Qualifiers[pos], qual)
+	d.FamilyQuals[string(family)].add(string(qual))
 }
 
 func (d *Delete) AddFamily(family []byte) {
-	pos := d.posOfFamily(family)
-
-	if pos == -1 {
-		d.Families = append(d.Families, family)
-		d.Qualifiers = append(d.Qualifiers, make([][]byte, 0))
+	d.Families.add(string(family))
+	if _, ok := d.FamilyQuals[string(family)]; !ok {
+		d.FamilyQuals[string(family)] = newSet()
 	}
-}
-
-func (d *Delete) posOfFamily(family []byte) int {
-	for p, v := range d.Families {
-		if bytes.Equal(family, v) {
-			return p
-		}
-	}
-	return -1
 }
 
 func (d *Delete) ToProto() pb.Message {
@@ -80,13 +67,13 @@ func (d *Delete) ToProto() pb.Message {
 		MutateType: proto.MutationProto_DELETE.Enum(),
 	}
 
-	for i, v := range d.Families {
+	for family, _ := range d.Families {
 		cv := &proto.MutationProto_ColumnValue{
-			Family:         v,
+			Family:         []byte(family),
 			QualifierValue: make([]*proto.MutationProto_ColumnValue_QualifierValue, 0),
 		}
 
-		if len(d.Qualifiers[i]) == 0 {
+		if len(d.FamilyQuals[family]) == 0 {
 			cv.QualifierValue = append(cv.QualifierValue, &proto.MutationProto_ColumnValue_QualifierValue{
 				Qualifier:  nil,
 				Timestamp:  pb.Uint64(uint64(math.MaxInt64)),
@@ -94,9 +81,9 @@ func (d *Delete) ToProto() pb.Message {
 			})
 		}
 
-		for _, v := range d.Qualifiers[i] {
+		for qual, _ := range d.FamilyQuals[family] {
 			cv.QualifierValue = append(cv.QualifierValue, &proto.MutationProto_ColumnValue_QualifierValue{
-				Qualifier:  v,
+				Qualifier:  []byte(qual),
 				Timestamp:  pb.Uint64(uint64(math.MaxInt64)),
 				DeleteType: proto.MutationProto_DELETE_MULTIPLE_VERSIONS.Enum(),
 			})
