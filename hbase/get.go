@@ -4,31 +4,28 @@ import (
 	pb "github.com/golang/protobuf/proto"
 	"github.com/pingcap/go-themis/proto"
 
-	"bytes"
 	"fmt"
 	"strings"
 )
 
 type Get struct {
-	row        []byte
-	families   [][]byte
-	qualifiers [][][]byte
-	versions   int32
+	Row         []byte
+	Families    set
+	FamilyQuals map[string]set
+	Versions    int32
 }
 
 func CreateNewGet(row []byte) *Get {
 	return &Get{
-		row: row,
-		// [cf1, cf2, cf3...]
-		families: make([][]byte, 0),
-		// cf1 pos->[c1, c2], cf2 pos -> [c1]
-		qualifiers: make([][][]byte, 0),
-		versions:   1,
+		Row:         row,
+		Families:    newSet(),
+		FamilyQuals: make(map[string]set),
+		Versions:    1,
 	}
 }
 
 func (g *Get) GetRow() []byte {
-	return g.row
+	return g.Row
 }
 
 func (g *Get) AddString(famqual string) error {
@@ -55,40 +52,33 @@ func (g *Get) AddStringFamily(family string) {
 
 func (g *Get) AddColumn(family, qual []byte) {
 	g.AddFamily(family)
-	pos := g.posOfFamily(family)
-	g.qualifiers[pos] = append(g.qualifiers[pos], qual)
+	g.FamilyQuals[string(family)].add(string(qual))
 }
 
 func (g *Get) AddFamily(family []byte) {
-	pos := g.posOfFamily(family)
-	if pos == -1 {
-		g.families = append(g.families, family)
-		g.qualifiers = append(g.qualifiers, make([][]byte, 0))
+	g.Families.add(string(family))
+	if _, ok := g.FamilyQuals[string(family)]; !ok {
+		g.FamilyQuals[string(family)] = newSet()
 	}
-}
 
-func (g *Get) posOfFamily(family []byte) int {
-	for p, v := range g.families {
-		if bytes.Equal(family, v) {
-			return p
-		}
-	}
-	return -1
 }
 
 func (g *Get) ToProto() pb.Message {
 	get := &proto.Get{
-		Row: g.row,
+		Row: g.Row,
 	}
 
-	for i, v := range g.families {
-		get.Column = append(get.Column, &proto.Column{
-			Family:    v,
-			Qualifier: g.qualifiers[i],
-		})
+	for v, _ := range g.Families {
+		col := &proto.Column{
+			Family: []byte(v),
+		}
+		var quals [][]byte
+		for qual, _ := range g.FamilyQuals[v] {
+			quals = append(quals, []byte(qual))
+		}
+		col.Qualifier = quals
+		get.Column = append(get.Column, col)
 	}
-
-	get.MaxVersions = pb.Uint32(uint32(g.versions))
-
+	get.MaxVersions = pb.Uint32(uint32(g.Versions))
 	return get
 }

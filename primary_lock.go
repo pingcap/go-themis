@@ -37,7 +37,7 @@ func (l *PrimaryLock) toBytes() []byte {
 	binary.Write(buf, binary.BigEndian, int32(len(l.secondaries)))
 	for k, v := range l.secondaries {
 		c := &hbase.ColumnCoordinate{}
-		c.ParserFromString(k)
+		c.ParseFromString(k)
 		c.Write(buf)
 		buf.WriteByte(uint8(v))
 	}
