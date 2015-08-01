@@ -125,7 +125,7 @@ func (txn *Txn) selectPrepareAndSecondary() {
 		txn.singleRowTxn = true
 	}
 	// construct secondary lock
-	secondaryLock := txn.constructSecondaryLock(TypePut)
+	secondaryLock := txn.constructSecondaryLock(hbase.TypePut)
 	if secondaryLock != nil {
 		txn.secondaryLockBytes = secondaryLock.toBytes()
 	} else {
@@ -135,7 +135,7 @@ func (txn *Txn) selectPrepareAndSecondary() {
 	log.Info(txn.secondaryLockBytes)
 }
 
-func (txn *Txn) constructSecondaryLock(typ Type) *SecondaryLock {
+func (txn *Txn) constructSecondaryLock(typ hbase.Type) *SecondaryLock {
 	if txn.primaryRow.getSize() <= 1 && len(txn.secondaryRows) == 0 {
 		return nil
 	}

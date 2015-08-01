@@ -11,7 +11,7 @@ import (
 type PrimaryLock struct {
 	*lock
 	// {coordinate => type}
-	secondaries map[string]Type
+	secondaries map[string]hbase.Type
 }
 
 func newPrimaryLock() *PrimaryLock {
@@ -19,11 +19,11 @@ func newPrimaryLock() *PrimaryLock {
 		lock: &lock{
 			clientAddr: "null-client-addr",
 		},
-		secondaries: map[string]Type{},
+		secondaries: map[string]hbase.Type{},
 	}
 }
 
-func (l *PrimaryLock) addSecondaryColumn(col *hbase.ColumnCoordinate, t Type) {
+func (l *PrimaryLock) addSecondaryColumn(col *hbase.ColumnCoordinate, t hbase.Type) {
 	l.secondaries[col.String()] = t
 }
 
@@ -48,10 +48,10 @@ func (l *PrimaryLock) isExpired() bool {
 	return l.lock.expired
 }
 
-func (l *PrimaryLock) getSecondaryColumnType(c *hbase.ColumnCoordinate) Type {
+func (l *PrimaryLock) getSecondaryColumnType(c *hbase.ColumnCoordinate) hbase.Type {
 	v, ok := l.secondaries[c.String()]
 	if !ok {
-		return TypeMinimum
+		return hbase.TypeMinimum
 	}
 	return v
 }
@@ -74,7 +74,7 @@ func (l *PrimaryLock) parseField(buf iohelper.ByteMultiReader) error {
 		if err != nil {
 			return err
 		}
-		t := Type(b)
+		t := hbase.Type(b)
 		l.addSecondaryColumn(c, t)
 	}
 	return nil

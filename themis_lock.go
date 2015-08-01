@@ -15,7 +15,7 @@ var (
 )
 
 type lock struct {
-	typ        Type
+	typ        hbase.Type
 	ts         uint64
 	wallTs     uint64
 	clientAddr string
@@ -53,7 +53,7 @@ func (l *lock) parseField(r iohelper.ByteMultiReader) error {
 	if err != nil {
 		return err
 	}
-	l.typ = Type(typ)
+	l.typ = hbase.Type(typ)
 
 	// read ts
 	var ts int64

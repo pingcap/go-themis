@@ -9,20 +9,8 @@ import (
 	"github.com/pingcap/go-themis/proto"
 )
 
-type Type byte
-
-const (
-	TypeMinimum             = Type(0)
-	TypePut                 = Type(4)
-	TypeDelete              = Type(8)
-	TypeDeleteFamilyVersion = Type(10)
-	TypeDeleteColumn        = Type(12)
-	TypeDeleteFamily        = Type(14)
-	TypeMaximum             = Type(0xff)
-)
-
 type mutationValuePair struct {
-	typ   Type
+	typ   hbase.Type
 	value []byte
 }
 
@@ -41,7 +29,7 @@ func (cm *columnMutation) toCell() *proto.Cell {
 		Qualifier: cm.Qual,
 		Value:     cm.value,
 	}
-	if cm.typ == TypePut {
+	if cm.typ == hbase.TypePut {
 		ret.CellType = proto.CellType_PUT.Enum()
 	} else {
 		ret.CellType = proto.CellType_DELETE.Enum()
@@ -59,10 +47,10 @@ func (r *rowMutation) getSize() int {
 	return len(r.mutations)
 }
 
-func (r *rowMutation) getType(c hbase.Column) Type {
+func (r *rowMutation) getType(c hbase.Column) hbase.Type {
 	p, ok := r.mutations[c.String()]
 	if !ok {
-		return TypeMinimum
+		return hbase.TypeMinimum
 	}
 	return p.typ
 }
@@ -74,7 +62,7 @@ func newRowMutation(row []byte) *rowMutation {
 	}
 }
 
-func (r *rowMutation) addMutation(c *hbase.Column, typ Type, val []byte) {
+func (r *rowMutation) addMutation(c *hbase.Column, typ hbase.Type, val []byte) {
 	r.mutations[c.String()] = &mutationValuePair{
 		typ:   typ,
 		value: val,
@@ -112,7 +100,7 @@ func newColumnMutationCache() *columnMutationCache {
 	}
 }
 
-func (c *columnMutationCache) addMutation(tbl []byte, row []byte, col *hbase.Column, t Type, v []byte) {
+func (c *columnMutationCache) addMutation(tbl []byte, row []byte, col *hbase.Column, t hbase.Type, v []byte) {
 	tblRowMutations, ok := c.mutations[string(tbl)]
 	if !ok {
 		// create table mutation map

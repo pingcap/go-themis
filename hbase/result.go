@@ -2,6 +2,15 @@ package hbase
 
 import "github.com/pingcap/go-themis/proto"
 
+type Kv struct {
+	Row   []byte
+	Ts    uint64
+	Value []byte
+	// history results
+	Values map[uint64][]byte
+	Column
+}
+
 type ResultRow struct {
 	Row           []byte
 	Columns       map[string]*Kv
