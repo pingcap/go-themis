@@ -59,6 +59,7 @@ func (cm *columnMutation) toCell() *proto.Cell {
 }
 
 type rowMutation struct {
+	tbl []byte
 	row []byte
 	// mutations := { 'cf:col' => mutationValuePair }
 	mutations map[string]*mutationValuePair
@@ -76,8 +77,9 @@ func (r *rowMutation) getType(c hbase.Column) hbase.Type {
 	return p.typ
 }
 
-func newRowMutation(row []byte) *rowMutation {
+func newRowMutation(tbl, row []byte) *rowMutation {
 	return &rowMutation{
+		tbl:       tbl,
 		row:       row,
 		mutations: map[string]*mutationValuePair{},
 	}
@@ -132,7 +134,7 @@ func (c *columnMutationCache) addMutation(tbl []byte, row []byte, col *hbase.Col
 	rowMutations, ok := tblRowMutations[string(row)]
 	if !ok {
 		// create row mutation map
-		rowMutations = newRowMutation(row)
+		rowMutations = newRowMutation(tbl, row)
 		tblRowMutations[string(row)] = rowMutations
 	}
 	rowMutations.addMutation(col, t, v)

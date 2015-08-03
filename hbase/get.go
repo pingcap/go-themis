@@ -13,6 +13,8 @@ type Get struct {
 	Families    set
 	FamilyQuals map[string]set
 	Versions    int32
+	TsRangeFrom uint64
+	TsRangeTo   uint64
 }
 
 func CreateNewGet(row []byte) *Get {
@@ -62,9 +64,21 @@ func (g *Get) AddFamily(family []byte) {
 	}
 }
 
+func (g *Get) AddTimeRange(from uint64, to uint64) {
+	g.TsRangeFrom = from
+	g.TsRangeTo = to
+}
+
 func (g *Get) ToProto() pb.Message {
 	get := &proto.Get{
 		Row: g.Row,
+	}
+
+	if g.TsRangeFrom != 0 && g.TsRangeTo != 0 && g.TsRangeFrom <= g.TsRangeTo {
+		get.TimeRange = &proto.TimeRange{
+			From: pb.Uint64(g.TsRangeFrom),
+			To:   pb.Uint64(g.TsRangeTo),
+		}
 	}
 
 	for v, _ := range g.Families {

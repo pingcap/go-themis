@@ -13,6 +13,7 @@ type Delete struct {
 	Row         []byte
 	Families    set
 	FamilyQuals map[string]set
+	Ts          map[string]uint64
 }
 
 func CreateNewDelete(row []byte) *Delete {
@@ -20,6 +21,7 @@ func CreateNewDelete(row []byte) *Delete {
 		Row:         row,
 		Families:    newSet(),
 		FamilyQuals: make(map[string]set),
+		Ts:          make(map[string]uint64),
 	}
 }
 
@@ -61,6 +63,12 @@ func (d *Delete) AddFamily(family []byte) {
 	}
 }
 
+func (d *Delete) AddColumnWithTimestamp(family, qual []byte, ts uint64) {
+	d.AddColumn(family, qual)
+	k := string(family) + ":" + string(qual)
+	d.Ts[k] = ts
+}
+
 func (d *Delete) ToProto() pb.Message {
 	del := &proto.MutationProto{
 		Row:        d.Row,
@@ -82,11 +90,16 @@ func (d *Delete) ToProto() pb.Message {
 		}
 
 		for qual, _ := range d.FamilyQuals[family] {
-			cv.QualifierValue = append(cv.QualifierValue, &proto.MutationProto_ColumnValue_QualifierValue{
+			v := &proto.MutationProto_ColumnValue_QualifierValue{
 				Qualifier:  []byte(qual),
 				Timestamp:  pb.Uint64(uint64(math.MaxInt64)),
 				DeleteType: proto.MutationProto_DELETE_MULTIPLE_VERSIONS.Enum(),
-			})
+			}
+			tsKey := string(family) + ":" + string(qual)
+			if ts, ok := d.Ts[tsKey]; ok {
+				v.Timestamp = pb.Uint64(ts)
+			}
+			cv.QualifierValue = append(cv.QualifierValue, v)
 		}
 
 		del.ColumnValue = append(del.ColumnValue, cv)

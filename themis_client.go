@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"errors"
+	"fmt"
 
 	pb "github.com/golang/protobuf/proto"
 	"github.com/ngaut/log"
@@ -167,4 +168,49 @@ func (t *themisClient) getLockAndErase(cc *hbase.ColumnCoordinate, prewriteTs ui
 		return nil, err
 	}
 	return parseLockFromBytes(res.GetLock())
+}
+
+func (t *themisClient) commitRow(tbl, row []byte, mutations []*columnMutation, prewriteTs, commitTs uint64, primaryOffset int) error {
+	req := &proto.ThemisCommitRequest{
+		Row:          row,
+		PrewriteTs:   pb.Uint64(prewriteTs),
+		CommitTs:     pb.Uint64(commitTs),
+		PrimaryIndex: pb.Int(primaryOffset),
+	}
+	for _, m := range mutations {
+		req.Mutations = append(req.Mutations, m.toCell())
+	}
+	param, _ := pb.Marshal(req)
+	call := &CoprocessorServiceCall{
+		row:          row,
+		serviceName:  ThemisServiceName,
+		methodName:   "commitRow",
+		requestParam: param,
+	}
+
+	r, err := t.client.ServiceCall(string(tbl), call)
+	if err != nil {
+		return err
+	}
+
+	var res proto.ThemisCommitResponse
+	err = pb.Unmarshal(r.GetValue().GetValue(), &res)
+	if err != nil {
+		return err
+	}
+
+	ok := res.GetResult()
+	if !ok {
+		return errors.New(fmt.Sprintf("commit failed, tbl: %s row: %s ts: %d", tbl, row, commitTs))
+	}
+	return nil
+}
+
+func (t *themisClient) commitSecondaryRow(tbl, row []byte, mutations []*columnMutation, prewriteTs, commitTs uint64) error {
+	log.Info("rpc: commitSecondaryRow")
+	return t.commitRow(tbl, row, mutations, prewriteTs, commitTs, -1)
+}
+
+func (t *themisClient) prewriteSecondaryRow(tbl, row []byte, mutations []*columnMutation, prewriteTs uint64, secondaryLockBytes []byte) (ThemisLock, error) {
+	return t.prewriteRow(tbl, row, mutations, prewriteTs, nil, secondaryLockBytes, -1)
 }

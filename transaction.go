@@ -32,7 +32,7 @@ func NewTxn(c *Client) *Txn {
 		primaryRowOffset: -1,
 	}
 	txn.startTs = txn.oracle.GetTimestamp()
-	txn.lockCleaner = newLockCleaner(txn.themisCli)
+	txn.lockCleaner = newLockCleaner(txn.themisCli, txn.themisCli.client)
 	return txn
 }
 
@@ -103,6 +103,9 @@ func (txn *Txn) Commit() error {
 }
 
 func (txn *Txn) prewriteSecondary() error {
+	for _, rowMutation := range txn.secondaryRows {
+		txn.prewriteRow(rowMutation.tbl, rowMutation, false)
+	}
 	return nil
 }
 
@@ -176,26 +179,75 @@ func (txn *Txn) prewriteRowWithLockClean(tbl []byte, mutation *rowMutation, cont
 
 func (txn *Txn) prewriteRow(tbl []byte, mutation *rowMutation, containPrimary bool) (ThemisLock, error) {
 	if containPrimary {
-		lock, err := txn.themisCli.prewriteRow(tbl, mutation.row, mutation.mutationList(), txn.startTs, txn.constructPrimaryLock().toBytes(), txn.secondaryLockBytes, txn.primaryRowOffset)
+		// try to get lock
+		lock, err := txn.themisCli.prewriteRow(tbl, mutation.row,
+			mutation.mutationList(),
+			txn.startTs,
+			txn.constructPrimaryLock().toBytes(),
+			txn.secondaryLockBytes, txn.primaryRowOffset)
+
 		if err != nil {
 			return nil, err
 		}
+
+		// some other got the lock, try to clean it
 		if lock != nil {
-			// some other got the lock, try to clean it
 			expired, err := txn.themisCli.checkAndSetLockIsExpired(lock, 0)
 			if err != nil {
 				return nil, err
 			}
-			log.Warning("lock expire status:", expired)
 			if expired {
-				// try to clean lock
-				log.Info("try clean primary lock")
+				// try to clean primary lock
+				log.Info("lock expired, try clean primary lock")
 				pl := lock.getPrimaryLock()
-				txn.lockCleaner.cleanPrimaryLock(pl.getColumn(), pl.getTimestamp())
+				commitTs, cleanedLock, err := txn.lockCleaner.cleanPrimaryLock(pl.getColumn(), pl.getTimestamp())
+				if err != nil {
+					return nil, err
+				}
+				//
+				if cleanedLock != nil {
+					pl = cleanedLock
+				}
+				log.Info("try clean secondary locks")
+				// clean secondary locks
+				// erase lock and data if commitTs is 0; otherwise, commit it.
+				for k, v := range pl.(*PrimaryLock).secondaries {
+					log.Info(k, v)
+					cc := hbase.ColumnCoordinate{}
+					cc.ParseFromString(k)
+					if commitTs == 0 {
+						// expire trx havn't committed yet, we must delete lock and
+						// dirty data
+						err = txn.lockCleaner.eraseLockAndData(cc.Table, cc.Row, cc.Column, pl.getTimestamp())
+						if err != nil {
+							return nil, err
+						}
+					} else {
+						// primary row is committed, so we must commit other
+						// secondary rows
+						mutation := &columnMutation{
+							Column: &cc.Column,
+							mutationValuePair: &mutationValuePair{
+								typ: v,
+							},
+						}
+						err = txn.themisCli.commitSecondaryRow(cc.Table, cc.Row,
+							[]*columnMutation{mutation}, pl.getTimestamp(), commitTs)
+						if err != nil {
+							return nil, err
+						}
+					}
+				}
+				// TODO try prewrite row again
+				//log.Info("try prewrite row again")
+				//return txn.prewriteRow(tbl, mutation, containPrimary)
 			}
 		} else {
+			// get lock successful
 			log.Info("got the lock")
 		}
+	} else {
+		return txn.themisCli.prewriteSecondaryRow(tbl, mutation.row, mutation.mutationList(), txn.startTs, txn.secondaryLockBytes)
 	}
 	return nil, nil
 }

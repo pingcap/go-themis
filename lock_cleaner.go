@@ -1,7 +1,10 @@
 package themis
 
 import (
+	"bytes"
+	"encoding/binary"
 	"errors"
+	"math"
 	"strings"
 
 	"github.com/ngaut/log"
@@ -10,10 +13,11 @@ import (
 
 type lockCleaner struct {
 	themisCli *themisClient
+	hbaseCli  *Client
 }
 
-func newLockCleaner(cli *themisClient) *lockCleaner {
-	return &lockCleaner{cli}
+func newLockCleaner(cli *themisClient, hbaseCli *Client) *lockCleaner {
+	return &lockCleaner{cli, hbaseCli}
 }
 
 func getDataColFromMetaCol(lockOrWriteCol hbase.Column) hbase.Column {
@@ -70,10 +74,41 @@ func (cleaner *lockCleaner) cleanPrimaryLock(cc *hbase.ColumnCoordinate, prewrit
 		return 0, nil, err
 	}
 	pl, _ := l.(*PrimaryLock)
-	log.Infof("%+v", pl)
+	// if primary lock is nil, means someothers have already committed
 	if pl == nil {
-		// TODO:get write ts after prewritets
+		g := hbase.CreateNewGet(cc.Row)
+		// add put write column
+		qual := string(cc.Family) + "#" + string(cc.Qual)
+		g.AddStringColumn("#p", qual)
+		// add del write column
+		g.AddStringColumn("#d", qual)
+		g.AddTimeRange(prewriteTs, math.MaxUint64)
+		r, err := cleaner.hbaseCli.Get(string(cc.Table), g)
+		if err != nil {
+			return 0, nil, err
+		}
+		for _, kv := range r.SortedColumns {
+			log.Infof("get write kv: %+v", kv)
+			var ts uint64
+			binary.Read(bytes.NewBuffer(kv.Value), binary.BigEndian, &ts)
+			if ts == prewriteTs {
+				// get this commit's commitTs
+				return kv.Ts, nil, nil
+			}
+		}
+	} else {
+		return 0, pl, nil
 	}
-	// TODO
+	panic("should not be here")
 	return 0, nil, nil
+}
+
+func (cleaner *lockCleaner) eraseLockAndData(tbl []byte, row []byte, col hbase.Column, ts uint64) error {
+	d := hbase.CreateNewDelete(row)
+	// delete lock
+	d.AddColumnWithTimestamp(LockFamilyName, []byte(string(col.Family)+"#"+string(col.Qual)), ts)
+	// delete dirty val
+	d.AddColumnWithTimestamp(col.Family, col.Qual, ts)
+	_, err := cleaner.hbaseCli.Delete(string(tbl), d)
+	return err
 }
