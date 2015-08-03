@@ -22,7 +22,6 @@ func (c *Client) action(table, row []byte, action action, useCache bool, retries
 		Type:  proto.RegionSpecifier_REGION_NAME.Enum(),
 		Value: []byte(region.Name),
 	}
-	log.Info(region.Name)
 
 	var cl *call = nil
 	switch a := action.(type) {
@@ -31,7 +30,7 @@ func (c *Client) action(table, row []byte, action action, useCache bool, retries
 			Region: regionSpecifier,
 			Get:    a.ToProto().(*proto.Get),
 		})
-	case *hbase.Put:
+	case *hbase.Put, *hbase.Delete:
 		cl = newCall(&proto.MutateRequest{
 			Region:   regionSpecifier,
 			Mutation: a.ToProto().(*proto.MutationProto),

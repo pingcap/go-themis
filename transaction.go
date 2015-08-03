@@ -14,6 +14,7 @@ type Txn struct {
 	oracle             oracle.Oracle
 	mutationCache      *columnMutationCache
 	startTs            uint64
+	commitTs           uint64
 	primaryRow         *rowMutation
 	primary            *hbase.ColumnCoordinate
 	secondaryRows      []*rowMutation
@@ -62,19 +63,6 @@ func shouldClean(l ThemisLock) bool {
 func cleanLock(l ThemisLock) {
 }
 
-func tryCleanLock(table string, lockKvs *hbase.ResultRow) error {
-	// TODO
-	for _, c := range lockKvs.SortedColumns {
-		if isLockColumn(&hbase.Column{c.Family, c.Qual}) {
-			_, err := parseLockFromBytes([]byte(c.Value))
-			if err != nil {
-				return err
-			}
-		}
-	}
-	return nil
-}
-
 func (t *Txn) Get(tbl string, g *hbase.Get) (*hbase.ResultRow, error) {
 	return nil, nil
 }
@@ -99,12 +87,40 @@ func (txn *Txn) Commit() error {
 	if err != nil {
 		return err
 	}
+
+	txn.commitTs = txn.oracle.GetTimestamp()
+	err = txn.commitPrimary()
+	if err != nil {
+		// TODO rollback
+		log.Fatal(err)
+	}
+	txn.commitSecondary()
 	return nil
+}
+
+func (txn *Txn) commitSecondary() {
+	for _, r := range txn.secondaryRows {
+		err := txn.themisCli.commitSecondaryRow(r.tbl, r.row, r.mutationList(false), txn.startTs, txn.commitTs)
+		if err != nil {
+			// fail of secondary commit will not stop the commits of next
+			// secondaries
+			log.Warning(err)
+		}
+	}
+}
+
+func (txn *Txn) commitPrimary() error {
+	return txn.themisCli.commitRow(txn.primary.Table, txn.primary.Row,
+		txn.primaryRow.mutationList(false),
+		txn.startTs, txn.commitTs, txn.primaryRowOffset)
 }
 
 func (txn *Txn) prewriteSecondary() error {
 	for _, rowMutation := range txn.secondaryRows {
-		txn.prewriteRow(rowMutation.tbl, rowMutation, false)
+		_, err := txn.prewriteRow(rowMutation.tbl, rowMutation, false)
+		if err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -115,7 +131,7 @@ func (txn *Txn) selectPrepareAndSecondary() {
 		for _, rowMutation := range rowMutations {
 			row := rowMutation.row
 			findPrimaryInRow := false
-			for i, mutation := range rowMutation.mutationList() {
+			for i, mutation := range rowMutation.mutationList(true) {
 				colcord := hbase.NewColumnCoordinate([]byte(tblName), row, mutation.Family, mutation.Qual)
 				// set the first column as primary if primary is not set by user
 				if txn.primaryRowOffset == -1 &&
@@ -124,7 +140,6 @@ func (txn *Txn) selectPrepareAndSecondary() {
 					txn.primaryRowOffset = i
 					txn.primaryRow = rowMutation
 					findPrimaryInRow = true
-					log.Warning(i, string(txn.primaryRow.row))
 				} else {
 					txn.secondary = append(txn.secondary, colcord)
 				}
@@ -181,7 +196,7 @@ func (txn *Txn) prewriteRow(tbl []byte, mutation *rowMutation, containPrimary bo
 	if containPrimary {
 		// try to get lock
 		lock, err := txn.themisCli.prewriteRow(tbl, mutation.row,
-			mutation.mutationList(),
+			mutation.mutationList(true),
 			txn.startTs,
 			txn.constructPrimaryLock().toBytes(),
 			txn.secondaryLockBytes, txn.primaryRowOffset)
@@ -247,7 +262,7 @@ func (txn *Txn) prewriteRow(tbl []byte, mutation *rowMutation, containPrimary bo
 			log.Info("got the lock")
 		}
 	} else {
-		return txn.themisCli.prewriteSecondaryRow(tbl, mutation.row, mutation.mutationList(), txn.startTs, txn.secondaryLockBytes)
+		return txn.themisCli.prewriteSecondaryRow(tbl, mutation.row, mutation.mutationList(true), txn.startTs, txn.secondaryLockBytes)
 	}
 	return nil, nil
 }

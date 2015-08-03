@@ -26,10 +26,10 @@ func main() {
 	tx.Get("CashTable", get)
 
 	put := hbase.CreateNewPut([]byte("Joe"))
-	put.AddValue([]byte("Account"), []byte("cash"), []byte("1"))
+	put.AddValue([]byte("Account"), []byte("cash"), []byte("3"))
 
 	put2 := hbase.CreateNewPut([]byte("Bob"))
-	put2.AddValue([]byte("Account"), []byte("cash"), []byte("2"))
+	put2.AddValue([]byte("Account"), []byte("cash"), []byte("4"))
 
 	tx.Put("CashTable", put)
 	tx.Put("CashTable", put2)

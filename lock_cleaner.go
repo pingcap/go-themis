@@ -64,10 +64,6 @@ func constructLocks(tbl []byte, lockKvs []*hbase.Kv, client *themisClient, TTL u
 	return locks, nil
 }
 
-func (cleaner *lockCleaner) tryToCleanLock(tbl []byte, lockKvs []*hbase.Kv) error {
-	return nil
-}
-
 func (cleaner *lockCleaner) cleanPrimaryLock(cc *hbase.ColumnCoordinate, prewriteTs uint64) (uint64, ThemisLock, error) {
 	l, err := cleaner.themisCli.getLockAndErase(cc, prewriteTs)
 	if err != nil {

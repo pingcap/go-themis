@@ -61,6 +61,12 @@ func (t *themisClient) prewriteRow(tbl []byte, row []byte, mutations []*columnMu
 		SecondaryLock: secondaryLockBytes,
 		PrimaryIndex:  pb.Int(primaryOffset),
 	}
+	if primaryLockBytes == nil {
+		request.PrimaryLock = []byte("")
+	}
+	if secondaryLockBytes == nil {
+		request.SecondaryLock = []byte("")
+	}
 	for _, m := range mutations {
 		cells = append(cells, m.toCell())
 	}

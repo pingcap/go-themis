@@ -92,7 +92,7 @@ func (r *rowMutation) addMutation(c *hbase.Column, typ hbase.Type, val []byte) {
 	}
 }
 
-func (r *rowMutation) mutationList() []*columnMutation {
+func (r *rowMutation) mutationList(withValue bool) []*columnMutation {
 	var ret []*columnMutation
 	var keys []string
 	for k, _ := range r.mutations {
@@ -100,7 +100,12 @@ func (r *rowMutation) mutationList() []*columnMutation {
 	}
 	sort.Strings(keys)
 	for _, k := range keys {
-		v := r.mutations[k]
+		v := &mutationValuePair{
+			typ: r.mutations[k].typ,
+		}
+		if withValue {
+			v.value = r.mutations[k].value
+		}
 		c := &hbase.Column{}
 		c.ParseFromString(k)
 		ret = append(ret, &columnMutation{
@@ -160,7 +165,7 @@ func (c *columnMutationCache) getSize() int {
 	ret := 0
 	for _, v := range c.mutations {
 		for _, vv := range v {
-			ret += len(vv.mutationList())
+			ret += len(vv.mutationList(false))
 		}
 	}
 	return ret
