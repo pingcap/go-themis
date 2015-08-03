@@ -4,8 +4,17 @@ import (
 	"errors"
 	"strings"
 
+	"github.com/ngaut/log"
 	"github.com/pingcap/go-themis/hbase"
 )
+
+type lockCleaner struct {
+	themisCli *themisClient
+}
+
+func newLockCleaner(cli *themisClient) *lockCleaner {
+	return &lockCleaner{cli}
+}
 
 func getDataColFromMetaCol(lockOrWriteCol hbase.Column) hbase.Column {
 	// get data column from lock column
@@ -51,6 +60,20 @@ func constructLocks(tbl []byte, lockKvs []*hbase.Kv, client *themisClient, TTL u
 	return locks, nil
 }
 
-func tryToCleanLock(tbl []byte, lockKvs []*hbase.Kv, cli *themisClient) error {
+func (cleaner *lockCleaner) tryToCleanLock(tbl []byte, lockKvs []*hbase.Kv) error {
 	return nil
+}
+
+func (cleaner *lockCleaner) cleanPrimaryLock(cc *hbase.ColumnCoordinate, prewriteTs uint64) (uint64, ThemisLock, error) {
+	l, err := cleaner.themisCli.getLockAndErase(cc, prewriteTs)
+	if err != nil {
+		return 0, nil, err
+	}
+	pl, _ := l.(*PrimaryLock)
+	log.Infof("%+v", pl)
+	if pl == nil {
+		// TODO:get write ts after prewritets
+	}
+	// TODO
+	return 0, nil, nil
 }

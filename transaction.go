@@ -19,6 +19,7 @@ type Txn struct {
 	secondaryRows      []*rowMutation
 	secondary          []*hbase.ColumnCoordinate
 	primaryRowOffset   int
+	lockCleaner        *lockCleaner
 	singleRowTxn       bool
 	secondaryLockBytes []byte
 }
@@ -31,6 +32,7 @@ func NewTxn(c *Client) *Txn {
 		primaryRowOffset: -1,
 	}
 	txn.startTs = txn.oracle.GetTimestamp()
+	txn.lockCleaner = newLockCleaner(txn.themisCli)
 	return txn
 }
 
@@ -78,9 +80,9 @@ func (t *Txn) Get(tbl string, g *hbase.Get) (*hbase.ResultRow, error) {
 }
 
 func (txn *Txn) Put(tbl string, p *hbase.Put) {
-	//for _, e := range p.Entries() {
-	//	txn.mutationCache.addMutation([]byte(tbl), p.put.key, e.column, e.typ, e.value)
-	//}
+	for _, e := range getEntriesFromPut(p) {
+		txn.mutationCache.addMutation([]byte(tbl), p.Row, e.Column, e.typ, e.value)
+	}
 }
 
 func (txn *Txn) Commit() error {
@@ -93,6 +95,14 @@ func (txn *Txn) Commit() error {
 	if err != nil {
 		return err
 	}
+	err = txn.prewriteSecondary()
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (txn *Txn) prewriteSecondary() error {
 	return nil
 }
 
@@ -166,9 +176,25 @@ func (txn *Txn) prewriteRowWithLockClean(tbl []byte, mutation *rowMutation, cont
 
 func (txn *Txn) prewriteRow(tbl []byte, mutation *rowMutation, containPrimary bool) (ThemisLock, error) {
 	if containPrimary {
-		_, err := txn.themisCli.prewriteRow(tbl, mutation.row, mutation.mutationList(), txn.startTs, txn.constructPrimaryLock().toBytes(), txn.secondaryLockBytes, txn.primaryRowOffset)
+		lock, err := txn.themisCli.prewriteRow(tbl, mutation.row, mutation.mutationList(), txn.startTs, txn.constructPrimaryLock().toBytes(), txn.secondaryLockBytes, txn.primaryRowOffset)
 		if err != nil {
 			return nil, err
+		}
+		if lock != nil {
+			// some other got the lock, try to clean it
+			expired, err := txn.themisCli.checkAndSetLockIsExpired(lock, 0)
+			if err != nil {
+				return nil, err
+			}
+			log.Warning("lock expire status:", expired)
+			if expired {
+				// try to clean lock
+				log.Info("try clean primary lock")
+				pl := lock.getPrimaryLock()
+				txn.lockCleaner.cleanPrimaryLock(pl.getColumn(), pl.getTimestamp())
+			}
+		} else {
+			log.Info("got the lock")
 		}
 	}
 	return nil, nil

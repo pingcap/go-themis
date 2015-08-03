@@ -6,6 +6,7 @@ import (
 	"errors"
 
 	pb "github.com/golang/protobuf/proto"
+	"github.com/ngaut/log"
 	"github.com/pingcap/go-themis/hbase"
 	"github.com/pingcap/go-themis/proto"
 )
@@ -137,4 +138,33 @@ func (t *themisClient) isLockExpired(tbl, row []byte, ts uint64) (bool, error) {
 		return false, err
 	}
 	return res.GetExpired(), nil
+}
+
+func (t *themisClient) getLockAndErase(cc *hbase.ColumnCoordinate, prewriteTs uint64) (ThemisLock, error) {
+	log.Info("rpc: getLockAndErase")
+	req := &proto.EraseLockRequest{
+		Row:        cc.Row,
+		Family:     cc.Column.Family,
+		Qualifier:  cc.Column.Qual,
+		PrewriteTs: pb.Uint64(prewriteTs),
+	}
+	param, _ := pb.Marshal(req)
+	call := &CoprocessorServiceCall{
+		row:          cc.Row,
+		serviceName:  ThemisServiceName,
+		methodName:   "getLockAndErase",
+		requestParam: param,
+	}
+
+	r, err := t.client.ServiceCall(string(cc.Table), call)
+	if err != nil {
+		return nil, err
+	}
+
+	var res proto.EraseLockResponse
+	err = pb.Unmarshal(r.GetValue().GetValue(), &res)
+	if err != nil {
+		return nil, err
+	}
+	return parseLockFromBytes(res.GetLock())
 }

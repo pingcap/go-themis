@@ -23,6 +23,27 @@ type columnMutation struct {
 	*mutationValuePair
 }
 
+func getEntriesFromPut(p *hbase.Put) []*columnMutation {
+	var ret []*columnMutation
+	for i, f := range p.Families {
+		qualifiers := p.Qualifiers[i]
+		for j, q := range qualifiers {
+			mutation := &columnMutation{
+				Column: &hbase.Column{
+					Family: f,
+					Qual:   q,
+				},
+				mutationValuePair: &mutationValuePair{
+					typ:   hbase.TypePut,
+					value: p.Values[i][j],
+				},
+			}
+			ret = append(ret, mutation)
+		}
+	}
+	return ret
+}
+
 func (cm *columnMutation) toCell() *proto.Cell {
 	ret := &proto.Cell{
 		Family:    cm.Family,

@@ -23,6 +23,10 @@ func newPrimaryLock() *PrimaryLock {
 	}
 }
 
+func (l *PrimaryLock) getPrimaryLock() ThemisLock {
+	return l
+}
+
 func (l *PrimaryLock) addSecondaryColumn(col *hbase.ColumnCoordinate, t hbase.Type) {
 	l.secondaries[col.String()] = t
 }

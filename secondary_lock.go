@@ -30,6 +30,15 @@ func (l *SecondaryLock) getPrimaryColumn() *hbase.ColumnCoordinate {
 	return l.primaryCoordinate
 }
 
+func (l *SecondaryLock) getPrimaryLock() ThemisLock {
+	pl := newPrimaryLock()
+	pl.setColumn(l.getPrimaryColumn())
+	pl.ts = l.ts
+	pl.clientAddr = l.clientAddr
+	pl.addSecondaryColumn(l.getColumn(), l.typ)
+	return pl
+}
+
 func (l *SecondaryLock) isPrimary() bool {
 	return false
 }

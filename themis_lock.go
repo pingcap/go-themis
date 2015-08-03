@@ -36,6 +36,7 @@ type ThemisLock interface {
 	setExpired(bool)
 	isExpired() bool
 	isPrimary() bool
+	getPrimaryLock() ThemisLock
 	setColumn(col *hbase.ColumnCoordinate)
 	getColumn() *hbase.ColumnCoordinate
 	toBytes() []byte
