@@ -192,7 +192,6 @@ func (c *Client) parseRegion(rr *hbase.ResultRow) *RegionInfo {
 			Name:           string(rr.Row),
 			TableNamespace: string(info.GetTableName().GetNamespace()),
 			TableName:      string(info.GetTableName().GetQualifier()),
-			//Ts:             rr.Columns["info:server"].Ts,
 		}
 	}
 
