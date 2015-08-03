@@ -60,7 +60,6 @@ func (g *Get) AddFamily(family []byte) {
 	if _, ok := g.FamilyQuals[string(family)]; !ok {
 		g.FamilyQuals[string(family)] = newSet()
 	}
-
 }
 
 func (g *Get) ToProto() pb.Message {

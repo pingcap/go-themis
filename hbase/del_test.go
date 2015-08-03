@@ -31,13 +31,13 @@ func (s *HBaseDelTestSuit) TestDel(c *C) {
 	}
 
 	d = CreateNewDelete([]byte("hello"))
-	d.AddStringColumn("cf", "q")
+	d.AddStringColumn("cf\x00", "q")
 	d.AddStringColumn("cf", "q")
 	d.AddStringColumn("cf", "q")
 	msg = d.ToProto()
 	p, _ = msg.(*proto.MutationProto)
 	cv = p.GetColumnValue()
-	c.Assert(len(cv), Equals, 1)
+	c.Assert(len(cv), Equals, 2)
 
 	for _, v := range cv {
 		c.Assert(len(v.QualifierValue), Equals, 1)
