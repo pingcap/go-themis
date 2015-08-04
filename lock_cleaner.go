@@ -20,10 +20,10 @@ var _ lockCleaner = (*lockCleanerImpl)(nil)
 
 type lockCleanerImpl struct {
 	themisCli themisClient
-	hbaseCli  *client
+	hbaseCli  hbaseClient
 }
 
-func newLockCleaner(cli themisClient, hbaseCli *client) lockCleaner {
+func newLockCleaner(cli themisClient, hbaseCli hbaseClient) lockCleaner {
 	return &lockCleanerImpl{cli, hbaseCli}
 }
 

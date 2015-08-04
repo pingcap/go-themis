@@ -25,7 +25,7 @@ type Txn struct {
 	secondaryLockBytes []byte
 }
 
-func NewTxn(c *client) *Txn {
+func NewTxn(c hbaseClient) *Txn {
 	txn := &Txn{
 		themisCli:        newThemisClient(c),
 		mutationCache:    newColumnMutationCache(),
