@@ -23,14 +23,14 @@ type themisClient interface {
 	prewriteSecondaryRow(tbl, row []byte, mutations []*columnMutation, prewriteTs uint64, secondaryLockBytes []byte) (ThemisLock, error)
 }
 
-func newThemisClient(client *client) themisClient {
+func newThemisClient(client hbaseClient) themisClient {
 	return &themisClientImpl{
 		client: client,
 	}
 }
 
 type themisClientImpl struct {
-	client *client
+	client hbaseClient
 }
 
 func (t *themisClientImpl) checkAndSetLockIsExpired(lock ThemisLock, TTL uint64) (bool, error) {
@@ -50,11 +50,11 @@ func (t *themisClientImpl) themisGet(tbl []byte, g *hbase.Get, startTs uint64) (
 	}
 	param, _ := pb.Marshal(requestParam)
 
-	call := &CoprocessorServiceCall{
-		row:          g.GetRow(),
-		serviceName:  ThemisServiceName,
-		methodName:   "themisGet",
-		requestParam: param,
+	call := &hbase.CoprocessorServiceCall{
+		Row:          g.GetRow(),
+		ServiceName:  ThemisServiceName,
+		MethodName:   "themisGet",
+		RequestParam: param,
 	}
 
 	r, err := t.client.ServiceCall(string(tbl), call)
@@ -89,11 +89,11 @@ func (t *themisClientImpl) prewriteRow(tbl []byte, row []byte, mutations []*colu
 	}
 	request.Mutations = cells
 	param, _ := pb.Marshal(request)
-	call := &CoprocessorServiceCall{
-		row:          row,
-		serviceName:  ThemisServiceName,
-		methodName:   "prewriteRow",
-		requestParam: param,
+	call := &hbase.CoprocessorServiceCall{
+		Row:          row,
+		ServiceName:  ThemisServiceName,
+		MethodName:   "prewriteRow",
+		RequestParam: param,
 	}
 
 	r, err := t.client.ServiceCall(string(tbl), call)
@@ -144,11 +144,11 @@ func (t *themisClientImpl) isLockExpired(tbl, row []byte, ts uint64) (bool, erro
 		Timestamp: pb.Uint64(ts),
 	}
 	param, _ := pb.Marshal(req)
-	call := &CoprocessorServiceCall{
-		row:          row,
-		serviceName:  ThemisServiceName,
-		methodName:   "isLockExpired",
-		requestParam: param,
+	call := &hbase.CoprocessorServiceCall{
+		Row:          row,
+		ServiceName:  ThemisServiceName,
+		MethodName:   "isLockExpired",
+		RequestParam: param,
 	}
 
 	r, err := t.client.ServiceCall(string(tbl), call)
@@ -173,11 +173,11 @@ func (t *themisClientImpl) getLockAndErase(cc *hbase.ColumnCoordinate, prewriteT
 		PrewriteTs: pb.Uint64(prewriteTs),
 	}
 	param, _ := pb.Marshal(req)
-	call := &CoprocessorServiceCall{
-		row:          cc.Row,
-		serviceName:  ThemisServiceName,
-		methodName:   "getLockAndErase",
-		requestParam: param,
+	call := &hbase.CoprocessorServiceCall{
+		Row:          cc.Row,
+		ServiceName:  ThemisServiceName,
+		MethodName:   "getLockAndErase",
+		RequestParam: param,
 	}
 
 	r, err := t.client.ServiceCall(string(cc.Table), call)
@@ -204,11 +204,11 @@ func (t *themisClientImpl) commitRow(tbl, row []byte, mutations []*columnMutatio
 		req.Mutations = append(req.Mutations, m.toCell())
 	}
 	param, _ := pb.Marshal(req)
-	call := &CoprocessorServiceCall{
-		row:          row,
-		serviceName:  ThemisServiceName,
-		methodName:   "commitRow",
-		requestParam: param,
+	call := &hbase.CoprocessorServiceCall{
+		Row:          row,
+		ServiceName:  ThemisServiceName,
+		MethodName:   "commitRow",
+		RequestParam: param,
 	}
 
 	r, err := t.client.ServiceCall(string(tbl), call)

@@ -60,6 +60,7 @@ type hbaseClient interface {
 	Get(tbl string, g *hbase.Get) (*hbase.ResultRow, error)
 	Put(tbl string, p *hbase.Put) (bool, error)
 	Delete(tbl string, d *hbase.Delete) (bool, error)
+	ServiceCall(table string, call *hbase.CoprocessorServiceCall) (*proto.CoprocessorServiceResponse, error)
 }
 
 var _ hbaseClient = (*client)(nil)
@@ -297,4 +298,18 @@ func (c *client) Put(table string, put *hbase.Put) (bool, error) {
 	}
 
 	return false, fmt.Errorf("No valid response seen [response: %#v]", response)
+}
+
+func (c *client) ServiceCall(table string, call *hbase.CoprocessorServiceCall) (*proto.CoprocessorServiceResponse, error) {
+	ch := c.action([]byte(table), call.Row, call, true, 0)
+	response := <-ch
+	switch r := response.(type) {
+	case *proto.CoprocessorServiceResponse:
+		return r, nil
+	case *exception:
+		log.Error(r.msg)
+		return nil, errors.New(r.msg)
+	}
+
+	return nil, fmt.Errorf("No valid response seen [response: %#v]", response)
 }

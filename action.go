@@ -36,7 +36,7 @@ func (c *client) action(table, row []byte, action action, useCache bool, retries
 			Mutation: a.ToProto().(*proto.MutationProto),
 		})
 
-	case *CoprocessorServiceCall:
+	case *hbase.CoprocessorServiceCall:
 		cl = newCall(&proto.CoprocessorServiceRequest{
 			Region: regionSpecifier,
 			Call:   a.ToProto().(*proto.CoprocessorServiceCall),

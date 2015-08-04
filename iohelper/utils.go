@@ -40,3 +40,9 @@ func ReadN(r io.Reader, n int32) ([]byte, error) {
 	_, err := io.ReadFull(r, b)
 	return b, err
 }
+
+func ReadUint64(r io.Reader) (uint64, error) {
+	var n uint64
+	err := binary.Read(r, binary.BigEndian, &n)
+	return n, err
+}
