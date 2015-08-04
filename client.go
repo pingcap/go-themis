@@ -62,9 +62,9 @@ type hbaseClient interface {
 	Delete(tbl string, d *hbase.Delete) (bool, error)
 }
 
-var _ hbaseClient = (*Client)(nil)
+var _ hbaseClient = (*client)(nil)
 
-type Client struct {
+type client struct {
 	zkClient         *zk.Conn
 	zkHosts          []string
 	zkRoot           string
@@ -80,8 +80,8 @@ func serverNameToAddr(server *proto.ServerName) string {
 	return fmt.Sprintf("%s:%d", server.GetHostName(), server.GetPort())
 }
 
-func NewClient(zkHosts []string, zkRoot string) (*Client, error) {
-	cl := &Client{
+func newClient(zkHosts []string, zkRoot string) (*client, error) {
+	cl := &client{
 		zkHosts:          zkHosts,
 		zkRoot:           zkRoot,
 		cachedConns:      make(map[string]*connection),
@@ -97,7 +97,7 @@ func NewClient(zkHosts []string, zkRoot string) (*Client, error) {
 }
 
 // init and get root region server addr and master addr
-func (c *Client) init() error {
+func (c *client) init() error {
 	zkclient, _, err := zk.Connect(c.zkHosts, time.Second*30)
 	if err != nil {
 		return err
@@ -131,7 +131,7 @@ func (c *Client) init() error {
 	return nil
 }
 
-func (c *Client) decodeMeta(data []byte) (*proto.ServerName, error) {
+func (c *client) decodeMeta(data []byte) (*proto.ServerName, error) {
 	if data[0] != magicHeadByte {
 		return nil, errors.New("unknown packet")
 	}
@@ -150,7 +150,7 @@ func (c *Client) decodeMeta(data []byte) (*proto.ServerName, error) {
 	return mrs.GetServer(), nil
 }
 
-func (c *Client) getConn(addr string, isMaster bool) *connection {
+func (c *client) getConn(addr string, isMaster bool) *connection {
 	if s, ok := c.cachedConns[addr]; ok {
 		return s
 	}
@@ -164,7 +164,7 @@ func (c *Client) getConn(addr string, isMaster bool) *connection {
 }
 
 // http://stackoverflow.com/questions/27602013/correct-way-to-get-region-name-by-using-hbase-api
-func (c *Client) createRegionName(table, startKey []byte, id string, newFormat bool) []byte {
+func (c *client) createRegionName(table, startKey []byte, id string, newFormat bool) []byte {
 	if len(startKey) == 0 {
 		startKey = make([]byte, 1)
 	}
@@ -179,7 +179,7 @@ func (c *Client) createRegionName(table, startKey []byte, id string, newFormat b
 	return b
 }
 
-func (c *Client) parseRegion(rr *hbase.ResultRow) *RegionInfo {
+func (c *client) parseRegion(rr *hbase.ResultRow) *RegionInfo {
 	if regionInfoCol, ok := rr.Columns["info:regioninfo"]; ok {
 		offset := strings.Index(string(regionInfoCol.Value), "PBUF") + 4
 		regionInfoBytes := regionInfoCol.Value[offset:]
@@ -208,7 +208,7 @@ func (c *Client) parseRegion(rr *hbase.ResultRow) *RegionInfo {
 	return nil
 }
 
-func (c *Client) locateRegion(table, row []byte, useCache bool) *RegionInfo {
+func (c *client) locateRegion(table, row []byte, useCache bool) *RegionInfo {
 	metaRegion := &RegionInfo{
 		StartKey: []byte{},
 		EndKey:   []byte{},
@@ -259,7 +259,7 @@ func (c *Client) locateRegion(table, row []byte, useCache bool) *RegionInfo {
 	return nil
 }
 
-func (c *Client) Delete(table string, del *hbase.Delete) (bool, error) {
+func (c *client) Delete(table string, del *hbase.Delete) (bool, error) {
 	ch := c.action([]byte(table), del.GetRow(), del, true, 0)
 
 	response := <-ch
@@ -271,7 +271,7 @@ func (c *Client) Delete(table string, del *hbase.Delete) (bool, error) {
 	return false, fmt.Errorf("No valid response seen [response: %#v]", response)
 }
 
-func (c *Client) Get(table string, get *hbase.Get) (*hbase.ResultRow, error) {
+func (c *client) Get(table string, get *hbase.Get) (*hbase.ResultRow, error) {
 	ch := c.action([]byte(table), get.GetRow(), get, true, 0)
 	if ch == nil {
 		return nil, fmt.Errorf("Create region server connection failed")
@@ -287,7 +287,7 @@ func (c *Client) Get(table string, get *hbase.Get) (*hbase.ResultRow, error) {
 	return nil, fmt.Errorf("No valid response seen [response: %#v]", response)
 }
 
-func (c *Client) Put(table string, put *hbase.Put) (bool, error) {
+func (c *client) Put(table string, put *hbase.Put) (bool, error) {
 	ch := c.action([]byte(table), put.GetRow(), put, true, 0)
 
 	response := <-ch

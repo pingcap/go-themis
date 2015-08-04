@@ -13,10 +13,10 @@ import (
 
 type lockCleaner struct {
 	themisCli themisClient
-	hbaseCli  *Client
+	hbaseCli  *client
 }
 
-func newLockCleaner(cli themisClient, hbaseCli *Client) *lockCleaner {
+func newLockCleaner(cli themisClient, hbaseCli *client) *lockCleaner {
 	return &lockCleaner{cli, hbaseCli}
 }
 

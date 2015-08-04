@@ -25,7 +25,7 @@ func (c *CoprocessorServiceCall) ToProto() pb.Message {
 	}
 }
 
-func (cli *Client) ServiceCall(table string, call *CoprocessorServiceCall) (*proto.CoprocessorServiceResponse, error) {
+func (cli *client) ServiceCall(table string, call *CoprocessorServiceCall) (*proto.CoprocessorServiceResponse, error) {
 	ch := cli.action([]byte(table), call.row, call, true, 0)
 	response := <-ch
 	switch r := response.(type) {

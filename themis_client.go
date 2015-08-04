@@ -23,14 +23,14 @@ type themisClient interface {
 	prewriteSecondaryRow(tbl, row []byte, mutations []*columnMutation, prewriteTs uint64, secondaryLockBytes []byte) (ThemisLock, error)
 }
 
-func newThemisClient(client *Client) themisClient {
+func newThemisClient(client *client) themisClient {
 	return &themisClientImpl{
 		client: client,
 	}
 }
 
 type themisClientImpl struct {
-	client *Client
+	client *client
 }
 
 func (t *themisClientImpl) checkAndSetLockIsExpired(lock ThemisLock, TTL uint64) (bool, error) {

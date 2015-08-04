@@ -11,7 +11,7 @@ type action interface {
 	ToProto() pb.Message
 }
 
-func (c *Client) action(table, row []byte, action action, useCache bool, retries int) chan pb.Message {
+func (c *client) action(table, row []byte, action action, useCache bool, retries int) chan pb.Message {
 	region := c.locateRegion(table, row, useCache)
 	conn := c.getConn(region.Server, false)
 	if conn == nil || region == nil {
