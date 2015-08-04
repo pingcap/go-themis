@@ -1,8 +1,10 @@
 package themis
 
-import "github.com/stretchr/testify/mock"
-
-import "github.com/pingcap/go-themis/hbase"
+import (
+	"github.com/pingcap/go-themis/hbase"
+	"github.com/pingcap/go-themis/proto"
+	"github.com/stretchr/testify/mock"
+)
 
 type mockLockCleaner struct {
 	mock.Mock
@@ -136,7 +138,7 @@ func (_m *mockThemisClient) getLockAndErase(cc *hbase.ColumnCoordinate, prewrite
 	if rf, ok := ret.Get(0).(func(*hbase.ColumnCoordinate, uint64) ThemisLock); ok {
 		r0 = rf(cc, prewriteTs)
 	} else {
-		r0 = ret.Get(0).(ThemisLock)
+		r0, _ = ret.Get(0).(ThemisLock)
 	}
 
 	var r1 error
@@ -185,6 +187,91 @@ func (_m *mockThemisClient) prewriteSecondaryRow(tbl []byte, row []byte, mutatio
 	var r1 error
 	if rf, ok := ret.Get(1).(func([]byte, []byte, []*columnMutation, uint64, []byte) error); ok {
 		r1 = rf(tbl, row, mutations, prewriteTs, secondaryLockBytes)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+type mockHbaseClient struct {
+	mock.Mock
+}
+
+func (_m *mockHbaseClient) Get(tbl string, g *hbase.Get) (*hbase.ResultRow, error) {
+	ret := _m.Called(tbl, g)
+
+	var r0 *hbase.ResultRow
+	if rf, ok := ret.Get(0).(func(string, *hbase.Get) *hbase.ResultRow); ok {
+		r0 = rf(tbl, g)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*hbase.ResultRow)
+		}
+	}
+
+	var r1 error
+	if rf, ok := ret.Get(1).(func(string, *hbase.Get) error); ok {
+		r1 = rf(tbl, g)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+func (_m *mockHbaseClient) Put(tbl string, p *hbase.Put) (bool, error) {
+	ret := _m.Called(tbl, p)
+
+	var r0 bool
+	if rf, ok := ret.Get(0).(func(string, *hbase.Put) bool); ok {
+		r0 = rf(tbl, p)
+	} else {
+		r0 = ret.Get(0).(bool)
+	}
+
+	var r1 error
+	if rf, ok := ret.Get(1).(func(string, *hbase.Put) error); ok {
+		r1 = rf(tbl, p)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+func (_m *mockHbaseClient) Delete(tbl string, d *hbase.Delete) (bool, error) {
+	ret := _m.Called(tbl, d)
+
+	var r0 bool
+	if rf, ok := ret.Get(0).(func(string, *hbase.Delete) bool); ok {
+		r0 = rf(tbl, d)
+	} else {
+		r0 = ret.Get(0).(bool)
+	}
+
+	var r1 error
+	if rf, ok := ret.Get(1).(func(string, *hbase.Delete) error); ok {
+		r1 = rf(tbl, d)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+func (_m *mockHbaseClient) ServiceCall(table string, call *hbase.CoprocessorServiceCall) (*proto.CoprocessorServiceResponse, error) {
+	ret := _m.Called(table, call)
+
+	var r0 *proto.CoprocessorServiceResponse
+	if rf, ok := ret.Get(0).(func(string, *hbase.CoprocessorServiceCall) *proto.CoprocessorServiceResponse); ok {
+		r0 = rf(table, call)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*proto.CoprocessorServiceResponse)
+		}
+	}
+
+	var r1 error
+	if rf, ok := ret.Get(1).(func(string, *hbase.CoprocessorServiceCall) error); ok {
+		r1 = rf(table, call)
 	} else {
 		r1 = ret.Error(1)
 	}

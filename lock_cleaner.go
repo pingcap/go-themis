@@ -7,7 +7,6 @@ import (
 	"math"
 	"strings"
 
-	"github.com/ngaut/log"
 	"github.com/pingcap/go-themis/hbase"
 )
 
@@ -91,7 +90,6 @@ func (cleaner *lockCleanerImpl) cleanPrimaryLock(cc *hbase.ColumnCoordinate, pre
 			return 0, nil, err
 		}
 		for _, kv := range r.SortedColumns {
-			log.Infof("get write kv: %+v", kv)
 			var ts uint64
 			binary.Read(bytes.NewBuffer(kv.Value), binary.BigEndian, &ts)
 			if ts == prewriteTs {

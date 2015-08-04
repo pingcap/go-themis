@@ -1,20 +1,6 @@
 package themis
 
-import (
-	"bytes"
-	"encoding/binary"
-	"strings"
-
-	"github.com/ngaut/log"
-	"github.com/pingcap/go-themis/hbase"
-	"github.com/pingcap/go-themis/iohelper"
-	"github.com/pingcap/go-themis/proto"
-	"github.com/syndtr/goleveldb/leveldb"
-	"github.com/syndtr/goleveldb/leveldb/storage"
-	"github.com/syndtr/goleveldb/leveldb/util"
-
-	. "gopkg.in/check.v1"
-)
+import . "gopkg.in/check.v1"
 
 type HBaseClientTestSuit struct{}
 
@@ -24,6 +10,7 @@ const (
 	DefaultSeparator byte = ':'
 )
 
+/*
 type mockHbaseClient struct {
 	// row => {'cf:q' : data}
 	db *leveldb.DB
@@ -216,3 +203,4 @@ func (s *HBaseClientTestSuit) TestMockHbaseClient(c *C) {
 	c.Assert(string(r.SortedColumns[0].Value), Equals, "val")
 	log.Info(r)
 }
+*/
