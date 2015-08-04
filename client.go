@@ -56,6 +56,14 @@ type TableInfo struct {
 	Families  []string
 }
 
+type hbaseClient interface {
+	Get(tbl string, g *hbase.Get) (*hbase.ResultRow, error)
+	Put(tbl string, p *hbase.Put) (bool, error)
+	Delete(tbl string, d *hbase.Delete) (bool, error)
+}
+
+var _ hbaseClient = (*Client)(nil)
+
 type Client struct {
 	zkClient         *zk.Conn
 	zkHosts          []string

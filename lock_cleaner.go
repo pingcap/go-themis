@@ -12,11 +12,11 @@ import (
 )
 
 type lockCleaner struct {
-	themisCli *themisClient
+	themisCli themisClient
 	hbaseCli  *Client
 }
 
-func newLockCleaner(cli *themisClient, hbaseCli *Client) *lockCleaner {
+func newLockCleaner(cli themisClient, hbaseCli *Client) *lockCleaner {
 	return &lockCleaner{cli, hbaseCli}
 }
 
@@ -34,7 +34,7 @@ func getDataColFromMetaCol(lockOrWriteCol hbase.Column) hbase.Column {
 	return c
 }
 
-func constructLocks(tbl []byte, lockKvs []*hbase.Kv, client *themisClient, TTL uint64) ([]ThemisLock, error) {
+func constructLocks(tbl []byte, lockKvs []*hbase.Kv, client themisClient, TTL uint64) ([]ThemisLock, error) {
 	var locks []ThemisLock
 	for _, kv := range lockKvs {
 		col := &hbase.ColumnCoordinate{

@@ -10,7 +10,7 @@ import (
 )
 
 type Txn struct {
-	themisCli          *themisClient
+	themisCli          themisClient
 	oracle             oracle.Oracle
 	mutationCache      *columnMutationCache
 	startTs            uint64
@@ -27,13 +27,13 @@ type Txn struct {
 
 func NewTxn(c *Client) *Txn {
 	txn := &Txn{
-		themisCli:        &themisClient{c},
+		themisCli:        newThemisClient(c),
 		mutationCache:    newColumnMutationCache(),
 		oracle:           &oracles.LocalOracle{},
 		primaryRowOffset: -1,
 	}
 	txn.startTs = txn.oracle.GetTimestamp()
-	txn.lockCleaner = newLockCleaner(txn.themisCli, txn.themisCli.client)
+	txn.lockCleaner = newLockCleaner(txn.themisCli, c)
 	return txn
 }
 
