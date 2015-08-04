@@ -1,8 +1,6 @@
 package themis
 
 import (
-	"bytes"
-	"encoding/binary"
 	"errors"
 	"io"
 
@@ -49,11 +47,4 @@ func readPayloads(r io.Reader) ([][]byte, error) {
 		}
 	}
 	return nil, errors.New("unexcepted payload")
-}
-
-func preparePayload(buf []byte) []byte {
-	out := bytes.NewBuffer(nil)
-	binary.Write(out, binary.BigEndian, int32(len(buf)))
-	out.Write(buf)
-	return out.Bytes()
 }

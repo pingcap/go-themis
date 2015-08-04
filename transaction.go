@@ -11,6 +11,7 @@ import (
 
 type Txn struct {
 	themisCli          themisClient
+	lockCleaner        lockCleaner
 	oracle             oracle.Oracle
 	mutationCache      *columnMutationCache
 	startTs            uint64
@@ -20,7 +21,6 @@ type Txn struct {
 	secondaryRows      []*rowMutation
 	secondary          []*hbase.ColumnCoordinate
 	primaryRowOffset   int
-	lockCleaner        *lockCleaner
 	singleRowTxn       bool
 	secondaryLockBytes []byte
 }

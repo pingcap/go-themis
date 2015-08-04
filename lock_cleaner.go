@@ -11,13 +11,20 @@ import (
 	"github.com/pingcap/go-themis/hbase"
 )
 
-type lockCleaner struct {
+type lockCleaner interface {
+	cleanPrimaryLock(cc *hbase.ColumnCoordinate, prewriteTs uint64) (uint64, ThemisLock, error)
+	eraseLockAndData(tbl []byte, row []byte, col hbase.Column, ts uint64) error
+}
+
+var _ lockCleaner = (*lockCleanerImpl)(nil)
+
+type lockCleanerImpl struct {
 	themisCli themisClient
 	hbaseCli  *client
 }
 
-func newLockCleaner(cli themisClient, hbaseCli *client) *lockCleaner {
-	return &lockCleaner{cli, hbaseCli}
+func newLockCleaner(cli themisClient, hbaseCli *client) lockCleaner {
+	return &lockCleanerImpl{cli, hbaseCli}
 }
 
 func getDataColFromMetaCol(lockOrWriteCol hbase.Column) hbase.Column {
@@ -64,7 +71,7 @@ func constructLocks(tbl []byte, lockKvs []*hbase.Kv, client themisClient, TTL ui
 	return locks, nil
 }
 
-func (cleaner *lockCleaner) cleanPrimaryLock(cc *hbase.ColumnCoordinate, prewriteTs uint64) (uint64, ThemisLock, error) {
+func (cleaner *lockCleanerImpl) cleanPrimaryLock(cc *hbase.ColumnCoordinate, prewriteTs uint64) (uint64, ThemisLock, error) {
 	l, err := cleaner.themisCli.getLockAndErase(cc, prewriteTs)
 	if err != nil {
 		return 0, nil, err
@@ -99,7 +106,7 @@ func (cleaner *lockCleaner) cleanPrimaryLock(cc *hbase.ColumnCoordinate, prewrit
 	return 0, nil, nil
 }
 
-func (cleaner *lockCleaner) eraseLockAndData(tbl []byte, row []byte, col hbase.Column, ts uint64) error {
+func (cleaner *lockCleanerImpl) eraseLockAndData(tbl []byte, row []byte, col hbase.Column, ts uint64) error {
 	d := hbase.CreateNewDelete(row)
 	// delete lock
 	d.AddColumnWithTimestamp(LockFamilyName, []byte(string(col.Family)+"#"+string(col.Qual)), ts)

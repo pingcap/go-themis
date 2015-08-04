@@ -116,7 +116,6 @@ func (c *mockHbaseClient) Get(tbl string, g *hbase.Get) (*hbase.ResultRow, error
 		}
 		colName := col.Column.String()
 		if v, exists := res.Columns[colName]; exists {
-			// renew the same cf result
 			if col.Ts > v.Ts {
 				v.Value = col.Value
 				v.Ts = col.Ts
@@ -152,7 +151,6 @@ func (c *mockHbaseClient) Put(tbl string, p *hbase.Put) (bool, error) {
 			qual := p.Qualifiers[i][j]
 			val := p.Values[i][j]
 			key := composeKey(tbl, row, cf, qual, 0)
-			log.Info("put", string(key), string(val))
 			err := c.db.Put(key, val, nil)
 			if err != nil {
 				return false, err
@@ -170,18 +168,12 @@ func (c *mockHbaseClient) Delete(tbl string, d *hbase.Delete) (bool, error) {
 		if len(d.FamilyQuals[family]) == 0 {
 			prefix := composeKey(tbl, row, []byte(cf), nil, 0)
 			// delete all this family
-
 			batch := new(leveldb.Batch)
-			iter := c.db.NewIterator(util.BytesPrefix(prefix), nil)
-			for iter.Next() {
-				batch.Delete(iter.Key())
-			}
-			iter.Release()
-			err := iter.Error()
-			if err != nil {
-				return false, err
-			}
-			err = c.db.Write(batch, nil)
+			c.Iter(prefix, func(k, v []byte) (bool, error) {
+				batch.Delete(k)
+				return true, nil
+			})
+			err := c.db.Write(batch, nil)
 			if err != nil {
 				return false, err
 			}

@@ -81,7 +81,7 @@ func serverNameToAddr(server *proto.ServerName) string {
 	return fmt.Sprintf("%s:%d", server.GetHostName(), server.GetPort())
 }
 
-func newClient(zkHosts []string, zkRoot string) (*client, error) {
+func NewClient(zkHosts []string, zkRoot string) (*client, error) {
 	cl := &client{
 		zkHosts:          zkHosts,
 		zkRoot:           zkRoot,

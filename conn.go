@@ -60,7 +60,6 @@ func (c *connection) processMessages() error {
 	for {
 		msgs, err := readPayloads(c.conn)
 		if err != nil {
-			// TODO: maybe we should notify all ongoing calls that connection is broken?
 			return err
 		}
 
