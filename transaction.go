@@ -2,6 +2,7 @@ package themis
 
 import (
 	"bytes"
+	"fmt"
 
 	"github.com/ngaut/log"
 	"github.com/pingcap/go-themis/hbase"
@@ -115,16 +116,6 @@ func (txn *Txn) commitPrimary() error {
 		txn.startTs, txn.commitTs, txn.primaryRowOffset)
 }
 
-func (txn *Txn) prewriteSecondary() error {
-	for _, rowMutation := range txn.secondaryRows {
-		_, err := txn.prewriteRow(rowMutation.tbl, rowMutation, false)
-		if err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
 func (txn *Txn) selectPrepareAndSecondary() {
 	txn.secondary = nil
 	for tblName, rowMutations := range txn.mutationCache.mutations {
@@ -185,9 +176,66 @@ func (txn *Txn) constructPrimaryLock() *PrimaryLock {
 }
 
 func (txn *Txn) prewriteRowWithLockClean(tbl []byte, mutation *rowMutation, containPrimary bool) error {
-	_, err := txn.prewriteRow(tbl, mutation, containPrimary)
+	lock, err := txn.prewriteRow(tbl, mutation, containPrimary)
 	if err != nil {
 		return err
+	}
+	// lock clean
+	if lock != nil {
+		expired, err := txn.themisCli.checkAndSetLockIsExpired(lock)
+		if err != nil {
+			return err
+		}
+		if expired {
+			// try to clean primary lock
+			log.Info("lock expired, try clean primary lock")
+			pl := lock.getPrimaryLock()
+			commitTs, cleanedLock, err := txn.lockCleaner.cleanPrimaryLock(pl.getColumn(), pl.getTimestamp())
+			if err != nil {
+				return err
+			}
+			//
+			if cleanedLock != nil {
+				pl = cleanedLock
+			}
+			log.Info("try clean secondary locks")
+			// clean secondary locks
+			// erase lock and data if commitTs is 0; otherwise, commit it.
+			for k, v := range pl.(*PrimaryLock).secondaries {
+				cc := hbase.ColumnCoordinate{}
+				cc.ParseFromString(k)
+				if commitTs == 0 {
+					// expire trx havn't committed yet, we must delete lock and
+					// dirty data
+					err = txn.lockCleaner.eraseLockAndData(cc.Table, cc.Row, []hbase.Column{cc.Column}, pl.getTimestamp())
+					if err != nil {
+						return err
+					}
+				} else {
+					// primary row is committed, so we must commit other
+					// secondary rows
+					mutation := &columnMutation{
+						Column: &cc.Column,
+						mutationValuePair: &mutationValuePair{
+							typ: v,
+						},
+					}
+					err = txn.themisCli.commitSecondaryRow(cc.Table, cc.Row,
+						[]*columnMutation{mutation}, pl.getTimestamp(), commitTs)
+					if err != nil {
+						return err
+					}
+				}
+			}
+		}
+		// try one more time after clean lock successfully
+		lock, err = txn.prewriteRow(tbl, mutation, containPrimary)
+		if err != nil {
+			return err
+		}
+		if lock != nil {
+			return fmt.Errorf("can't clean lock, column:%+v; conflict lock: %+v", lock.getColumn(), lock)
+		}
 	}
 	return nil
 }
@@ -195,74 +243,16 @@ func (txn *Txn) prewriteRowWithLockClean(tbl []byte, mutation *rowMutation, cont
 func (txn *Txn) prewriteRow(tbl []byte, mutation *rowMutation, containPrimary bool) (ThemisLock, error) {
 	if containPrimary {
 		// try to get lock
-		lock, err := txn.themisCli.prewriteRow(tbl, mutation.row,
+		return txn.themisCli.prewriteRow(tbl, mutation.row,
 			mutation.mutationList(true),
 			txn.startTs,
 			txn.constructPrimaryLock().toBytes(),
 			txn.secondaryLockBytes, txn.primaryRowOffset)
-
-		if err != nil {
-			return nil, err
-		}
-
-		// some other got the lock, try to clean it
-		if lock != nil {
-			expired, err := txn.themisCli.checkAndSetLockIsExpired(lock, 0)
-			if err != nil {
-				return nil, err
-			}
-			if expired {
-				// try to clean primary lock
-				log.Info("lock expired, try clean primary lock")
-				pl := lock.getPrimaryLock()
-				commitTs, cleanedLock, err := txn.lockCleaner.cleanPrimaryLock(pl.getColumn(), pl.getTimestamp())
-				if err != nil {
-					return nil, err
-				}
-				//
-				if cleanedLock != nil {
-					pl = cleanedLock
-				}
-				log.Info("try clean secondary locks")
-				// clean secondary locks
-				// erase lock and data if commitTs is 0; otherwise, commit it.
-				for k, v := range pl.(*PrimaryLock).secondaries {
-					log.Info(k, v)
-					cc := hbase.ColumnCoordinate{}
-					cc.ParseFromString(k)
-					if commitTs == 0 {
-						// expire trx havn't committed yet, we must delete lock and
-						// dirty data
-						err = txn.lockCleaner.eraseLockAndData(cc.Table, cc.Row, cc.Column, pl.getTimestamp())
-						if err != nil {
-							return nil, err
-						}
-					} else {
-						// primary row is committed, so we must commit other
-						// secondary rows
-						mutation := &columnMutation{
-							Column: &cc.Column,
-							mutationValuePair: &mutationValuePair{
-								typ: v,
-							},
-						}
-						err = txn.themisCli.commitSecondaryRow(cc.Table, cc.Row,
-							[]*columnMutation{mutation}, pl.getTimestamp(), commitTs)
-						if err != nil {
-							return nil, err
-						}
-					}
-				}
-				// TODO try prewrite row again
-				//log.Info("try prewrite row again")
-				//return txn.prewriteRow(tbl, mutation, containPrimary)
-			}
-		} else {
-			// get lock successful
-			log.Info("got the lock")
-		}
 	} else {
-		return txn.themisCli.prewriteSecondaryRow(tbl, mutation.row, mutation.mutationList(true), txn.startTs, txn.secondaryLockBytes)
+		return txn.themisCli.prewriteSecondaryRow(tbl, mutation.row,
+			mutation.mutationList(true),
+			txn.startTs,
+			txn.secondaryLockBytes)
 	}
 	return nil, nil
 }
@@ -271,6 +261,36 @@ func (txn *Txn) prewritePrimary() error {
 	err := txn.prewriteRowWithLockClean(txn.primary.Table, txn.primaryRow, true)
 	if err != nil {
 		return err
+	}
+	return nil
+}
+
+func (txn *Txn) prewriteSecondary() error {
+	for i, rowMutation := range txn.secondaryRows {
+		err := txn.prewriteRowWithLockClean(rowMutation.tbl, rowMutation, false)
+		if err != nil {
+			// need rollback
+			log.Warning("prewrite secondary rows encounter error, rolling back", err)
+			txn.rollbackRow(txn.primaryRow.tbl, txn.primaryRow)
+			txn.rollbackSecondaryRow(i)
+			return err
+		}
+	}
+	return nil
+}
+
+func (txn *Txn) rollbackRow(tbl []byte, mutation *rowMutation) error {
+	log.Warning("rolling back", tbl, mutation.getColumns())
+	return txn.lockCleaner.eraseLockAndData(tbl, mutation.row, mutation.getColumns(), txn.startTs)
+}
+
+func (txn *Txn) rollbackSecondaryRow(successIndex int) error {
+	for i := successIndex; i >= 0; i-- {
+		r := txn.secondaryRows[i]
+		err := txn.rollbackRow(r.tbl, r)
+		if err != nil {
+			return err
+		}
 	}
 	return nil
 }

@@ -2,13 +2,17 @@ package themis
 
 import (
 	"bytes"
-	"testing"
 
 	"github.com/ngaut/log"
 	"github.com/pingcap/go-themis/hbase"
+	. "gopkg.in/check.v1"
 )
 
-func TestMutationCache(t *testing.T) {
+type MutationCacheTestSuit struct{}
+
+var _ = Suite(&MutationCacheTestSuit{})
+
+func (s *MutationCacheTestSuit) TestMutationCache(c *C) {
 	cache := newColumnMutationCache()
 	row := []byte("r1")
 	col := &hbase.Column{[]byte("f1"), []byte("q1")}
@@ -26,8 +30,17 @@ func TestMutationCache(t *testing.T) {
 	}
 	mutation := cache.getMutation(cc)
 	if mutation == nil || mutation.typ != hbase.TypePut || bytes.Compare(mutation.value, []byte("test")) != 0 {
-		t.Error("cache error")
+		c.Error("cache error")
 	} else {
 		log.Info(mutation)
 	}
+
+	p := hbase.CreateNewPut([]byte("row"))
+	p.AddStringValue("cf", "q", "v")
+	p.AddStringValue("cf", "q1", "v")
+	p.AddStringValue("cf", "q2", "v")
+	p.AddStringValue("cf", "q3", "v")
+
+	entries := getEntriesFromPut(p)
+	c.Assert(len(entries), Equals, 4)
 }

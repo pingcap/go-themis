@@ -12,7 +12,7 @@ import (
 
 type lockCleaner interface {
 	cleanPrimaryLock(cc *hbase.ColumnCoordinate, prewriteTs uint64) (uint64, ThemisLock, error)
-	eraseLockAndData(tbl []byte, row []byte, col hbase.Column, ts uint64) error
+	eraseLockAndData(tbl []byte, row []byte, cols []hbase.Column, ts uint64) error
 }
 
 var _ lockCleaner = (*lockCleanerImpl)(nil)
@@ -40,7 +40,7 @@ func getDataColFromMetaCol(lockOrWriteCol hbase.Column) hbase.Column {
 	return c
 }
 
-func constructLocks(tbl []byte, lockKvs []*hbase.Kv, client themisClient, TTL uint64) ([]ThemisLock, error) {
+func constructLocks(tbl []byte, lockKvs []*hbase.Kv, client themisClient) ([]ThemisLock, error) {
 	var locks []ThemisLock
 	for _, kv := range lockKvs {
 		col := &hbase.ColumnCoordinate{
@@ -64,7 +64,7 @@ func constructLocks(tbl []byte, lockKvs []*hbase.Kv, client themisClient, TTL ui
 			Column: getDataColFromMetaCol(col.Column),
 		}
 		l.setColumn(cc)
-		client.checkAndSetLockIsExpired(l, TTL)
+		client.checkAndSetLockIsExpired(l)
 		locks = append(locks, l)
 	}
 	return locks, nil
@@ -84,6 +84,7 @@ func (cleaner *lockCleanerImpl) cleanPrimaryLock(cc *hbase.ColumnCoordinate, pre
 		g.AddStringColumn("#p", qual)
 		// add del write column
 		g.AddStringColumn("#d", qual)
+		// time range => [ours startTs, +Inf)
 		g.AddTimeRange(prewriteTs, math.MaxUint64)
 		r, err := cleaner.hbaseCli.Get(string(cc.Table), g)
 		if err != nil {
@@ -104,12 +105,14 @@ func (cleaner *lockCleanerImpl) cleanPrimaryLock(cc *hbase.ColumnCoordinate, pre
 	return 0, nil, nil
 }
 
-func (cleaner *lockCleanerImpl) eraseLockAndData(tbl []byte, row []byte, col hbase.Column, ts uint64) error {
+func (cleaner *lockCleanerImpl) eraseLockAndData(tbl []byte, row []byte, cols []hbase.Column, ts uint64) error {
 	d := hbase.CreateNewDelete(row)
-	// delete lock
-	d.AddColumnWithTimestamp(LockFamilyName, []byte(string(col.Family)+"#"+string(col.Qual)), ts)
-	// delete dirty val
-	d.AddColumnWithTimestamp(col.Family, col.Qual, ts)
+	for _, col := range cols {
+		// delete lock
+		d.AddColumnWithTimestamp(LockFamilyName, []byte(string(col.Family)+"#"+string(col.Qual)), ts)
+		// delete dirty val
+		d.AddColumnWithTimestamp(col.Family, col.Qual, ts)
+	}
 	_, err := cleaner.hbaseCli.Delete(string(tbl), d)
 	return err
 }

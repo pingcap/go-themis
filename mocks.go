@@ -53,19 +53,19 @@ type mockThemisClient struct {
 	mock.Mock
 }
 
-func (_m *mockThemisClient) checkAndSetLockIsExpired(l ThemisLock, TTL uint64) (bool, error) {
-	ret := _m.Called(l, TTL)
+func (_m *mockThemisClient) checkAndSetLockIsExpired(l ThemisLock) (bool, error) {
+	ret := _m.Called(l)
 
 	var r0 bool
-	if rf, ok := ret.Get(0).(func(ThemisLock, uint64) bool); ok {
-		r0 = rf(l, TTL)
+	if rf, ok := ret.Get(0).(func(ThemisLock) bool); ok {
+		r0 = rf(l)
 	} else {
 		r0 = ret.Get(0).(bool)
 	}
 
 	var r1 error
-	if rf, ok := ret.Get(1).(func(ThemisLock, uint64) error); ok {
-		r1 = rf(l, TTL)
+	if rf, ok := ret.Get(1).(func(ThemisLock) error); ok {
+		r1 = rf(l)
 	} else {
 		r1 = ret.Error(1)
 	}

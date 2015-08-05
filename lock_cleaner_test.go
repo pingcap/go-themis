@@ -13,6 +13,12 @@ type LockCleanerTestSuit struct{}
 
 var _ = Suite(&LockCleanerTestSuit{})
 
+func generateTestColumn() *hbase.Column {
+	return &hbase.Column{
+		Family: []byte("cf"),
+		Qual:   []byte("q"),
+	}
+}
 func generateTestColCoordinate() *hbase.ColumnCoordinate {
 	return &hbase.ColumnCoordinate{
 		Table: []byte("tbl"),

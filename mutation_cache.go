@@ -65,6 +65,16 @@ type rowMutation struct {
 	mutations map[string]*mutationValuePair
 }
 
+func (r *rowMutation) getColumns() []hbase.Column {
+	var ret []hbase.Column
+	for k, _ := range r.mutations {
+		c := &hbase.Column{}
+		c.ParseFromString(k)
+		ret = append(ret, *c)
+	}
+	return ret
+}
+
 func (r *rowMutation) getSize() int {
 	return len(r.mutations)
 }
