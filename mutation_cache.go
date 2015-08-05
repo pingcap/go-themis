@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/ngaut/log"
 	"github.com/pingcap/go-themis/hbase"
 	"github.com/pingcap/go-themis/proto"
 )
@@ -123,7 +122,6 @@ func (r *rowMutation) mutationList(withValue bool) []*columnMutation {
 			mutationValuePair: v,
 		})
 	}
-	log.Warning(string(r.row))
 	return ret
 }
 

@@ -78,7 +78,7 @@ func (s *LockCleanerTestSuit) TestLockCleanerEraseData(c *C) {
 	mockHbase.On("Delete", "tbl", d).Return(true, nil)
 
 	lc := newLockCleaner(mockThemis, mockHbase)
-	lc.eraseLockAndData([]byte("tbl"), []byte("row"), col, 0)
+	lc.eraseLockAndData([]byte("tbl"), []byte("row"), []hbase.Column{col}, 0)
 }
 
 func (s *LockCleanerTestSuit) TestCleanPrimaryLock(c *C) {

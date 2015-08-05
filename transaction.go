@@ -26,11 +26,13 @@ type Txn struct {
 	secondaryLockBytes []byte
 }
 
+var localOracle = &oracles.LocalOracle{}
+
 func NewTxn(c hbaseClient) *Txn {
 	txn := &Txn{
 		themisCli:        newThemisClient(c),
 		mutationCache:    newColumnMutationCache(),
-		oracle:           &oracles.LocalOracle{},
+		oracle:           localOracle,
 		primaryRowOffset: -1,
 	}
 	txn.startTs = txn.oracle.GetTimestamp()
@@ -150,8 +152,6 @@ func (txn *Txn) selectPrepareAndSecondary() {
 	} else {
 		txn.secondaryLockBytes = nil
 	}
-	log.Info(secondaryLock.primaryCoordinate)
-	log.Info(txn.secondaryLockBytes)
 }
 
 func (txn *Txn) constructSecondaryLock(typ hbase.Type) *SecondaryLock {
@@ -234,7 +234,7 @@ func (txn *Txn) prewriteRowWithLockClean(tbl []byte, mutation *rowMutation, cont
 			return err
 		}
 		if lock != nil {
-			return fmt.Errorf("can't clean lock, column:%+v; conflict lock: %+v", lock.getColumn(), lock)
+			return fmt.Errorf("can't clean lock, column:%+v; conflict lock: %+v, lock ts: %d", lock.getColumn(), lock, lock.getTimestamp())
 		}
 	}
 	return nil
@@ -270,7 +270,7 @@ func (txn *Txn) prewriteSecondary() error {
 		err := txn.prewriteRowWithLockClean(rowMutation.tbl, rowMutation, false)
 		if err != nil {
 			// need rollback
-			log.Warning("prewrite secondary rows encounter error, rolling back", err)
+			log.Warning("prewrite secondary rows encounter error, rolling back, err:", err)
 			txn.rollbackRow(txn.primaryRow.tbl, txn.primaryRow)
 			txn.rollbackSecondaryRow(i)
 			return err

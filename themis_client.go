@@ -116,7 +116,7 @@ func (t *themisClientImpl) prewriteRow(tbl []byte, row []byte, mutations []*colu
 	}
 	// if b[0] != 0 means encounter conflict
 	if commitTs != 0 {
-		return nil, errors.New("encounter conflict")
+		return nil, fmt.Errorf("write conflict, encounter write with larger timestamp than prewriteTs=%d, commitTs=%d", prewriteTs, commitTs)
 	}
 	l, err := parseLockFromBytes(b[1])
 	if err != nil {

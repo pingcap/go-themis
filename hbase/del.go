@@ -2,6 +2,7 @@ package hbase
 
 import (
 	pb "github.com/golang/protobuf/proto"
+	"github.com/ngaut/log"
 	"github.com/pingcap/go-themis/proto"
 
 	"fmt"
@@ -98,7 +99,9 @@ func (d *Delete) ToProto() pb.Message {
 			tsKey := string(family) + ":" + string(qual)
 			if ts, ok := d.Ts[tsKey]; ok {
 				v.Timestamp = pb.Uint64(ts)
+				v.DeleteType = proto.MutationProto_DELETE_ONE_VERSION.Enum()
 			}
+			log.Infof("%+v", v)
 			cv.QualifierValue = append(cv.QualifierValue, v)
 		}
 

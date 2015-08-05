@@ -113,6 +113,9 @@ func (cleaner *lockCleanerImpl) eraseLockAndData(tbl []byte, row []byte, cols []
 		// delete dirty val
 		d.AddColumnWithTimestamp(col.Family, col.Qual, ts)
 	}
-	_, err := cleaner.hbaseCli.Delete(string(tbl), d)
+	ok, err := cleaner.hbaseCli.Delete(string(tbl), d)
+	if !ok {
+		panic("delete should ok")
+	}
 	return err
 }
