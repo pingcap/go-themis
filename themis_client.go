@@ -7,7 +7,6 @@ import (
 	"fmt"
 
 	pb "github.com/golang/protobuf/proto"
-	"github.com/ngaut/log"
 	"github.com/pingcap/go-themis/hbase"
 	"github.com/pingcap/go-themis/proto"
 )
@@ -138,21 +137,8 @@ func (t *themisClientImpl) isLockExpired(tbl, row []byte, ts uint64) (bool, erro
 	req := &proto.LockExpiredRequest{
 		Timestamp: pb.Uint64(ts),
 	}
-	param, _ := pb.Marshal(req)
-	call := &hbase.CoprocessorServiceCall{
-		Row:          row,
-		ServiceName:  ThemisServiceName,
-		MethodName:   "isLockExpired",
-		RequestParam: param,
-	}
-
-	r, err := t.client.ServiceCall(string(tbl), call)
-	if err != nil {
-		return false, err
-	}
-
 	var res proto.LockExpiredResponse
-	err = pb.Unmarshal(r.GetValue().GetValue(), &res)
+	err := t.call("isLockExpired", tbl, row, req, &res)
 	if err != nil {
 		return false, err
 	}
@@ -160,35 +146,22 @@ func (t *themisClientImpl) isLockExpired(tbl, row []byte, ts uint64) (bool, erro
 }
 
 func (t *themisClientImpl) getLockAndErase(cc *hbase.ColumnCoordinate, prewriteTs uint64) (ThemisLock, error) {
-	log.Info("rpc: getLockAndErase")
 	req := &proto.EraseLockRequest{
 		Row:        cc.Row,
 		Family:     cc.Column.Family,
 		Qualifier:  cc.Column.Qual,
 		PrewriteTs: pb.Uint64(prewriteTs),
 	}
-	param, _ := pb.Marshal(req)
-	call := &hbase.CoprocessorServiceCall{
-		Row:          cc.Row,
-		ServiceName:  ThemisServiceName,
-		MethodName:   "getLockAndErase",
-		RequestParam: param,
-	}
-
-	r, err := t.client.ServiceCall(string(cc.Table), call)
-	if err != nil {
-		return nil, err
-	}
-
 	var res proto.EraseLockResponse
-	err = pb.Unmarshal(r.GetValue().GetValue(), &res)
+	err := t.call("getLockAndErase", cc.Table, cc.Row, req, &res)
 	if err != nil {
 		return nil, err
 	}
 	return parseLockFromBytes(res.GetLock())
 }
 
-func (t *themisClientImpl) commitRow(tbl, row []byte, mutations []*columnMutation, prewriteTs, commitTs uint64, primaryOffset int) error {
+func (t *themisClientImpl) commitRow(tbl, row []byte, mutations []*columnMutation,
+	prewriteTs, commitTs uint64, primaryOffset int) error {
 	req := &proto.ThemisCommitRequest{
 		Row:          row,
 		PrewriteTs:   pb.Uint64(prewriteTs),
@@ -198,25 +171,11 @@ func (t *themisClientImpl) commitRow(tbl, row []byte, mutations []*columnMutatio
 	for _, m := range mutations {
 		req.Mutations = append(req.Mutations, m.toCell())
 	}
-	param, _ := pb.Marshal(req)
-	call := &hbase.CoprocessorServiceCall{
-		Row:          row,
-		ServiceName:  ThemisServiceName,
-		MethodName:   "commitRow",
-		RequestParam: param,
-	}
-
-	r, err := t.client.ServiceCall(string(tbl), call)
-	if err != nil {
-		return err
-	}
-
 	var res proto.ThemisCommitResponse
-	err = pb.Unmarshal(r.GetValue().GetValue(), &res)
+	err := t.call("commitRow", tbl, row, req, &res)
 	if err != nil {
 		return err
 	}
-
 	ok := res.GetResult()
 	if !ok {
 		return errors.New(fmt.Sprintf("commit failed, tbl: %s row: %s ts: %d", tbl, row, commitTs))
@@ -224,10 +183,13 @@ func (t *themisClientImpl) commitRow(tbl, row []byte, mutations []*columnMutatio
 	return nil
 }
 
-func (t *themisClientImpl) commitSecondaryRow(tbl, row []byte, mutations []*columnMutation, prewriteTs, commitTs uint64) error {
+func (t *themisClientImpl) commitSecondaryRow(tbl, row []byte, mutations []*columnMutation,
+	prewriteTs, commitTs uint64) error {
 	return t.commitRow(tbl, row, mutations, prewriteTs, commitTs, -1)
 }
 
-func (t *themisClientImpl) prewriteSecondaryRow(tbl, row []byte, mutations []*columnMutation, prewriteTs uint64, secondaryLockBytes []byte) (ThemisLock, error) {
+func (t *themisClientImpl) prewriteSecondaryRow(tbl, row []byte,
+	mutations []*columnMutation, prewriteTs uint64,
+	secondaryLockBytes []byte) (ThemisLock, error) {
 	return t.prewriteRow(tbl, row, mutations, prewriteTs, nil, secondaryLockBytes, -1)
 }

@@ -67,6 +67,7 @@ func cleanLock(l ThemisLock) {
 }
 
 func (t *Txn) Get(tbl string, g *hbase.Get) (*hbase.ResultRow, error) {
+	// TODO
 	return nil, nil
 }
 
@@ -94,8 +95,10 @@ func (txn *Txn) Commit() error {
 	txn.commitTs = txn.oracle.GetTimestamp()
 	err = txn.commitPrimary()
 	if err != nil {
-		// TODO rollback
-		log.Fatal(err)
+		// commit primary error, rollback
+		txn.rollbackRow(txn.primaryRow.tbl, txn.primaryRow)
+		txn.rollbackSecondaryRow(len(txn.secondaryRows) - 1)
+		return err
 	}
 	txn.commitSecondary()
 	return nil
