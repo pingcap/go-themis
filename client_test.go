@@ -33,27 +33,24 @@ func (s *HBaseClientTestSuit) TestHBaseClient(c *C) {
 
 	c.Assert(bytes.Compare(result.Columns["cf:q"].Value, []byte("v")) == 0, Equals, true)
 
+	scan := newScan([]byte("t1"), cli, nil, 0)
+	scan.StartRow = []byte("hello_\x00")
+	scan.StopRow = []byte("hello_\xff")
+
+	for {
+		r := scan.Next()
+
+		if r == nil || scan.closed {
+			break
+		}
+
+		log.Error(string(r.Row))
+	}
+
 	del := hbase.CreateNewDelete([]byte("row"))
 	del.AddFamily([]byte("cf"))
 	ok, err = cli.Delete("t1", del)
 
 	c.Assert(ok, Equals, true)
 	c.Assert(err, Equals, nil)
-
-	scan := newScan([]byte("t1"), cli)
-
-	for {
-		results := scan.next()
-
-		if results == nil {
-			break
-		}
-
-		for _, v := range results {
-			log.Info(v)
-			if scan.closed {
-				return
-			}
-		}
-	}
 }

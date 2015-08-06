@@ -318,3 +318,7 @@ func (txn *Txn) rollbackSecondaryRow(successIndex int) error {
 	}
 	return nil
 }
+
+func (txn *Txn) GetScanner(tbl []byte, startKey, endKey []byte) *Scan {
+	return nil
+}

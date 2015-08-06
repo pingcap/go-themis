@@ -2,6 +2,7 @@ package themis
 
 import (
 	"bytes"
+	"encoding/binary"
 
 	pb "github.com/golang/protobuf/proto"
 	"github.com/ngaut/log"
@@ -31,22 +32,29 @@ type Scan struct {
 	numCached    int
 	closed       bool
 	ts           uint64
+	txn          *Txn
+	tsInBytes    []byte
 	location     *RegionInfo
 	server       *connection
+	cache        []*hbase.ResultRow
 }
 
-func newScan(table []byte, client *client) *Scan {
+func newScan(table []byte, client *client, txn *Txn, ts uint64) *Scan {
+	b := bytes.NewBuffer(nil)
+	binary.Write(b, binary.BigEndian, ts)
 	return &Scan{
 		client:       client,
 		table:        table,
 		nextStartRow: nil,
-
-		families:   make([][]byte, 0),
-		qualifiers: make([][][]byte, 0),
-
-		numCached: 100,
-		closed:    false,
+		families:     make([][]byte, 0),
+		qualifiers:   make([][][]byte, 0),
+		ts:           ts,
+		tsInBytes:    b.Bytes(),
+		txn:          txn,
+		numCached:    100,
+		closed:       false,
 	}
+
 }
 
 func (s *Scan) Close() {
@@ -103,7 +111,14 @@ func (s *Scan) getData(nextStart []byte) []*hbase.ResultRow {
 			Value: []byte(location.Name),
 		},
 		NumberOfRows: pb.Uint32(uint32(s.numCached)),
-		Scan:         &proto.Scan{},
+		Scan:         &proto.Scan{
+		//Attribute: []*proto.NameBytesPair{
+		//	&proto.NameBytesPair{
+		//		Name:  pb.String("_themisTransationStartTs_"),
+		//		Value: s.tsInBytes,
+		//	},
+		//},
+		},
 	}
 
 	if s.id > 0 {
@@ -180,17 +195,34 @@ func (s *Scan) processResponse(response pb.Message) []*hbase.ResultRow {
 	return tbr
 }
 
-func (s *Scan) next() []*hbase.ResultRow {
+func (s *Scan) nextBatch() int {
 	startRow := s.nextStartRow
 	if startRow == nil {
 		startRow = s.StartRow
 	}
+	rs := s.getData(startRow)
+	if rs == nil || len(rs) == 0 {
+		return 0
+	}
+	s.cache = rs
+	return len(s.cache)
+}
 
-	return s.getData(startRow)
+func (s *Scan) Next() *hbase.ResultRow {
+	var ret *hbase.ResultRow
+	if len(s.cache) == 0 {
+		n := s.nextBatch()
+		// no data returned
+		if n == 0 {
+			return nil
+		}
+	}
+	ret = s.cache[0]
+	s.cache = s.cache[1:len(s.cache)]
+	return ret
 }
 
 func (s *Scan) closeScan(server *connection, location *RegionInfo, id uint64) {
-
 	req := &proto.ScanRequest{
 		Region: &proto.RegionSpecifier{
 			Type:  proto.RegionSpecifier_REGION_NAME.Enum(),
