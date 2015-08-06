@@ -3,6 +3,7 @@ package themis
 import (
 	"bytes"
 
+	"github.com/ngaut/log"
 	"github.com/pingcap/go-themis/hbase"
 	. "gopkg.in/check.v1"
 )
@@ -38,4 +39,21 @@ func (s *HBaseClientTestSuit) TestHBaseClient(c *C) {
 
 	c.Assert(ok, Equals, true)
 	c.Assert(err, Equals, nil)
+
+	scan := newScan([]byte("t1"), cli)
+
+	for {
+		results := scan.next()
+
+		if results == nil {
+			break
+		}
+
+		for _, v := range results {
+			log.Info(v)
+			if scan.closed {
+				return
+			}
+		}
+	}
 }
