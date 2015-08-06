@@ -13,7 +13,7 @@ import (
 
 type themisClient interface {
 	checkAndSetLockIsExpired(l ThemisLock) (bool, error)
-	themisGet(tbl []byte, g *hbase.Get, startTs uint64) (*hbase.ResultRow, error)
+	themisGet(tbl []byte, g *hbase.Get, startTs uint64, ignoreLock bool) (*hbase.ResultRow, error)
 	prewriteRow(tbl []byte, row []byte, mutations []*columnMutation, prewriteTs uint64, primaryLockBytes []byte, secondaryLockBytes []byte, primaryOffset int) (ThemisLock, error)
 	isLockExpired(tbl, row []byte, ts uint64) (bool, error)
 	getLockAndErase(cc *hbase.ColumnCoordinate, prewriteTs uint64) (ThemisLock, error)
@@ -61,11 +61,11 @@ func (t *themisClientImpl) checkAndSetLockIsExpired(lock ThemisLock) (bool, erro
 	return b, nil
 }
 
-func (t *themisClientImpl) themisGet(tbl []byte, g *hbase.Get, startTs uint64) (*hbase.ResultRow, error) {
+func (t *themisClientImpl) themisGet(tbl []byte, g *hbase.Get, startTs uint64, ignoreLock bool) (*hbase.ResultRow, error) {
 	req := &proto.ThemisGetRequest{
 		Get:        g.ToProto().(*proto.Get),
 		StartTs:    pb.Uint64(startTs),
-		IgnoreLock: pb.Bool(false),
+		IgnoreLock: pb.Bool(ignoreLock),
 	}
 	var resp proto.Result
 	err := t.call("themisGet", tbl, g.Row, req, &resp)

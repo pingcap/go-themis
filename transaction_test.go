@@ -47,8 +47,17 @@ func (s *TransactionTestSuit) TestTransaction(c *C) {
 	get := hbase.CreateNewGet([]byte("Joe"))
 	get.AddColumn([]byte("Account"), []byte("cash"))
 
+	get2 := hbase.CreateNewGet([]byte("Bob"))
+	get2.AddColumn([]byte("Account"), []byte("cash"))
+
 	r, err := tx.Get("CashTable", get)
 	c.Assert(err, Equals, nil)
-	log.Info(r)
+	r2, err := tx.Get("CashTable", get2)
+	c.Assert(err, Equals, nil)
 
+	rVal, _ := strconv.Atoi(string(r.SortedColumns[0].Value))
+	rVal2, _ := strconv.Atoi(string(r2.SortedColumns[0].Value))
+	log.Info("return val:", rVal)
+	log.Info("return val2:", rVal2)
+	c.Assert(rVal >= 0 && rVal < 10 && rVal == rVal2, Equals, true)
 }

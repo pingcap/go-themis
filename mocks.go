@@ -72,12 +72,12 @@ func (_m *mockThemisClient) checkAndSetLockIsExpired(l ThemisLock) (bool, error)
 
 	return r0, r1
 }
-func (_m *mockThemisClient) themisGet(tbl []byte, g *hbase.Get, startTs uint64) (*hbase.ResultRow, error) {
+func (_m *mockThemisClient) themisGet(tbl []byte, g *hbase.Get, startTs uint64, ignoreLock bool) (*hbase.ResultRow, error) {
 	ret := _m.Called(tbl, g, startTs)
 
 	var r0 *hbase.ResultRow
-	if rf, ok := ret.Get(0).(func([]byte, *hbase.Get, uint64) *hbase.ResultRow); ok {
-		r0 = rf(tbl, g, startTs)
+	if rf, ok := ret.Get(0).(func([]byte, *hbase.Get, uint64, bool) *hbase.ResultRow); ok {
+		r0 = rf(tbl, g, startTs, ignoreLock)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*hbase.ResultRow)
@@ -85,8 +85,8 @@ func (_m *mockThemisClient) themisGet(tbl []byte, g *hbase.Get, startTs uint64) 
 	}
 
 	var r1 error
-	if rf, ok := ret.Get(1).(func([]byte, *hbase.Get, uint64) error); ok {
-		r1 = rf(tbl, g, startTs)
+	if rf, ok := ret.Get(1).(func([]byte, *hbase.Get, uint64, bool) error); ok {
+		r1 = rf(tbl, g, startTs, ignoreLock)
 	} else {
 		r1 = ret.Error(1)
 	}
