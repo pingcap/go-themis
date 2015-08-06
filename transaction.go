@@ -11,6 +11,7 @@ import (
 )
 
 type Txn struct {
+	client             *client
 	themisCli          themisClient
 	lockCleaner        lockCleaner
 	oracle             oracle.Oracle
@@ -30,6 +31,7 @@ var localOracle = &oracles.LocalOracle{}
 
 func NewTxn(c hbaseClient) *Txn {
 	txn := &Txn{
+		client:           c.(*client),
 		themisCli:        newThemisClient(c),
 		mutationCache:    newColumnMutationCache(),
 		oracle:           localOracle,
@@ -66,16 +68,7 @@ func (txn *Txn) Get(tbl string, g *hbase.Get) (*hbase.ResultRow, error) {
 	// contain locks, try to clean and get again
 	if isLockResult(r) {
 		log.Warning("get lock, try to clean and get again")
-		locks, err := constructLocks([]byte(tbl), r.SortedColumns, txn.themisCli)
-		for _, lock := range locks {
-			err := txn.tryToCleanLock(lock)
-			if err != nil {
-				log.Error(err)
-				return nil, err
-			}
-		}
-		// get again, ignore lock
-		r, err = txn.themisCli.themisGet([]byte(tbl), g, txn.startTs, true)
+		r, err = txn.tryToCleanLockAndGetAgain([]byte(tbl), g, r.SortedColumns)
 		if err != nil {
 			return nil, err
 		}
@@ -188,6 +181,24 @@ func (txn *Txn) constructPrimaryLock() *PrimaryLock {
 		l.addSecondaryColumn(c, txn.mutationCache.getMutation(c).typ)
 	}
 	return l
+}
+
+func (txn *Txn) tryToCleanLockAndGetAgain(tbl []byte, g *hbase.Get, lockKvs []*hbase.Kv) (*hbase.ResultRow, error) {
+	// try to clean locks
+	locks, err := constructLocks([]byte(tbl), lockKvs, txn.themisCli)
+	for _, lock := range locks {
+		err := txn.tryToCleanLock(lock)
+		if err != nil {
+			log.Error(err)
+			return nil, err
+		}
+	}
+	// get again, ignore lock
+	r, err := txn.themisCli.themisGet([]byte(tbl), g, txn.startTs, true)
+	if err != nil {
+		return nil, err
+	}
+	return r, nil
 }
 
 func (txn *Txn) tryToCleanLock(lock ThemisLock) error {
@@ -319,6 +330,13 @@ func (txn *Txn) rollbackSecondaryRow(successIndex int) error {
 	return nil
 }
 
-func (txn *Txn) GetScanner(tbl []byte, startKey, endKey []byte) *Scan {
-	return nil
+func (txn *Txn) GetScanner(tbl []byte, startKey, endKey []byte) *ThemisScanner {
+	scanner := newThemisScanner(tbl, txn, txn.client)
+	if startKey != nil {
+		scanner.setStartRow(startKey)
+	}
+	if endKey != nil {
+		scanner.setStopRow(endKey)
+	}
+	return scanner
 }

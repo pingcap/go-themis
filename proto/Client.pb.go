@@ -11,41 +11,6 @@ import math "math"
 var _ = proto1.Marshal
 var _ = math.Inf
 
-// *
-// Consistency defines the expected consistency level for an operation.
-type Consistency int32
-
-const (
-	Consistency_STRONG   Consistency = 0
-	Consistency_TIMELINE Consistency = 1
-)
-
-var Consistency_name = map[int32]string{
-	0: "STRONG",
-	1: "TIMELINE",
-}
-var Consistency_value = map[string]int32{
-	"STRONG":   0,
-	"TIMELINE": 1,
-}
-
-func (x Consistency) Enum() *Consistency {
-	p := new(Consistency)
-	*p = x
-	return p
-}
-func (x Consistency) String() string {
-	return proto1.EnumName(Consistency_name, int32(x))
-}
-func (x *Consistency) UnmarshalJSON(data []byte) error {
-	value, err := proto1.UnmarshalJSONEnum(Consistency_value, data, "Consistency")
-	if err != nil {
-		return err
-	}
-	*x = Consistency(value)
-	return nil
-}
-
 type MutationProto_Durability int32
 
 const (
@@ -248,9 +213,8 @@ type Get struct {
 	ExistenceOnly *bool `protobuf:"varint,10,opt,name=existence_only,def=0" json:"existence_only,omitempty"`
 	// If the row to get doesn't exist, return the
 	// closest row before.
-	ClosestRowBefore *bool        `protobuf:"varint,11,opt,name=closest_row_before,def=0" json:"closest_row_before,omitempty"`
-	Consistency      *Consistency `protobuf:"varint,12,opt,name=consistency,enum=proto.Consistency,def=0" json:"consistency,omitempty"`
-	XXX_unrecognized []byte       `json:"-"`
+	ClosestRowBefore *bool  `protobuf:"varint,11,opt,name=closest_row_before,def=0" json:"closest_row_before,omitempty"`
+	XXX_unrecognized []byte `json:"-"`
 }
 
 func (m *Get) Reset()         { *m = Get{} }
@@ -261,7 +225,6 @@ const Default_Get_MaxVersions uint32 = 1
 const Default_Get_CacheBlocks bool = true
 const Default_Get_ExistenceOnly bool = false
 const Default_Get_ClosestRowBefore bool = false
-const Default_Get_Consistency Consistency = Consistency_STRONG
 
 func (m *Get) GetRow() []byte {
 	if m != nil {
@@ -340,13 +303,6 @@ func (m *Get) GetClosestRowBefore() bool {
 	return Default_Get_ClosestRowBefore
 }
 
-func (m *Get) GetConsistency() Consistency {
-	if m != nil && m.Consistency != nil {
-		return *m.Consistency
-	}
-	return Default_Get_Consistency
-}
-
 type Result struct {
 	// Result includes the Cells or else it just has a count of Cells
 	// that are carried otherwise.
@@ -360,17 +316,13 @@ type Result struct {
 	AssociatedCellCount *int32 `protobuf:"varint,2,opt,name=associated_cell_count" json:"associated_cell_count,omitempty"`
 	// used for Get to check existence only. Not set if existence_only was not set to true
 	//  in the query.
-	Exists *bool `protobuf:"varint,3,opt,name=exists" json:"exists,omitempty"`
-	// Whether or not the results are coming from possibly stale data
-	Stale            *bool  `protobuf:"varint,4,opt,name=stale,def=0" json:"stale,omitempty"`
+	Exists           *bool  `protobuf:"varint,3,opt,name=exists" json:"exists,omitempty"`
 	XXX_unrecognized []byte `json:"-"`
 }
 
 func (m *Result) Reset()         { *m = Result{} }
 func (m *Result) String() string { return proto1.CompactTextString(m) }
 func (*Result) ProtoMessage()    {}
-
-const Default_Result_Stale bool = false
 
 func (m *Result) GetCell() []*Cell {
 	if m != nil {
@@ -391,13 +343,6 @@ func (m *Result) GetExists() bool {
 		return *m.Exists
 	}
 	return false
-}
-
-func (m *Result) GetStale() bool {
-	if m != nil && m.Stale != nil {
-		return *m.Stale
-	}
-	return Default_Result_Stale
 }
 
 // *
@@ -762,7 +707,6 @@ type Scan struct {
 	LoadColumnFamiliesOnDemand *bool            `protobuf:"varint,13,opt,name=load_column_families_on_demand" json:"load_column_families_on_demand,omitempty"`
 	Small                      *bool            `protobuf:"varint,14,opt,name=small" json:"small,omitempty"`
 	Reversed                   *bool            `protobuf:"varint,15,opt,name=reversed,def=0" json:"reversed,omitempty"`
-	Consistency                *Consistency     `protobuf:"varint,16,opt,name=consistency,enum=proto.Consistency,def=0" json:"consistency,omitempty"`
 	Caching                    *uint32          `protobuf:"varint,17,opt,name=caching" json:"caching,omitempty"`
 	XXX_unrecognized           []byte           `json:"-"`
 }
@@ -774,7 +718,6 @@ func (*Scan) ProtoMessage()    {}
 const Default_Scan_MaxVersions uint32 = 1
 const Default_Scan_CacheBlocks bool = true
 const Default_Scan_Reversed bool = false
-const Default_Scan_Consistency Consistency = Consistency_STRONG
 
 func (m *Scan) GetColumn() []*Column {
 	if m != nil {
@@ -881,13 +824,6 @@ func (m *Scan) GetReversed() bool {
 	return Default_Scan_Reversed
 }
 
-func (m *Scan) GetConsistency() Consistency {
-	if m != nil && m.Consistency != nil {
-		return *m.Consistency
-	}
-	return Default_Scan_Consistency
-}
-
 func (m *Scan) GetCaching() uint32 {
 	if m != nil && m.Caching != nil {
 		return *m.Caching
@@ -979,9 +915,12 @@ type ScanResponse struct {
 	// If cells are not carried in an accompanying cellblock, then they are pb'd here.
 	// This field is mutually exclusive with cells_per_result (since the Cells will
 	// be inside the pb'd Result)
-	Results          []*Result `protobuf:"bytes,5,rep,name=results" json:"results,omitempty"`
-	Stale            *bool     `protobuf:"varint,6,opt,name=stale" json:"stale,omitempty"`
-	XXX_unrecognized []byte    `json:"-"`
+	Results []*Result `protobuf:"bytes,5,rep,name=results" json:"results,omitempty"`
+	// A server may choose to limit the number of results returned to the client for
+	// reasons such as the size in bytes or quantity of results accumulated. This field
+	// will true when more results exist in the current region.
+	MoreResultsInRegion *bool  `protobuf:"varint,8,opt,name=more_results_in_region" json:"more_results_in_region,omitempty"`
+	XXX_unrecognized    []byte `json:"-"`
 }
 
 func (m *ScanResponse) Reset()         { *m = ScanResponse{} }
@@ -1023,9 +962,9 @@ func (m *ScanResponse) GetResults() []*Result {
 	return nil
 }
 
-func (m *ScanResponse) GetStale() bool {
-	if m != nil && m.Stale != nil {
-		return *m.Stale
+func (m *ScanResponse) GetMoreResultsInRegion() bool {
+	if m != nil && m.MoreResultsInRegion != nil {
+		return *m.MoreResultsInRegion
 	}
 	return false
 }
@@ -1466,7 +1405,6 @@ func (m *MultiResponse) GetProcessed() bool {
 }
 
 func init() {
-	proto1.RegisterEnum("proto.Consistency", Consistency_name, Consistency_value)
 	proto1.RegisterEnum("proto.MutationProto_Durability", MutationProto_Durability_name, MutationProto_Durability_value)
 	proto1.RegisterEnum("proto.MutationProto_MutationType", MutationProto_MutationType_name, MutationProto_MutationType_value)
 	proto1.RegisterEnum("proto.MutationProto_DeleteType", MutationProto_DeleteType_name, MutationProto_DeleteType_value)

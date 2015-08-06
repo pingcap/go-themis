@@ -30,3 +30,6 @@ func (m *ClusterId) GetClusterId() string {
 	}
 	return ""
 }
+
+func init() {
+}

@@ -77,3 +77,6 @@ func (m *AggregateResponse) GetSecondPart() []byte {
 	}
 	return nil
 }
+
+func init() {
+}

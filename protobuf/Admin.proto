@@ -19,10 +19,10 @@ package proto;
 
 // This file contains protocol buffers that are used for Admin service.
 
-
-
-
-
+option java_package = "org.apache.hadoop.hbase.protobuf.generated";
+option java_outer_classname = "AdminProtos";
+option java_generic_services = true;
+option java_generate_equals_and_hash = true;
 option optimize_for = SPEED;
 
 import "Client.proto";
@@ -205,10 +205,6 @@ message ReplicateWALEntryResponse {
 message RollWALWriterRequest {
 }
 
-/*
- * Roll request responses no longer include regions to flush
- * this list will always be empty when talking to a 1.0 server
- */
 message RollWALWriterResponse {
   // A list of encoded name of regions to flush
   repeated bytes region_to_flush = 1;
@@ -231,12 +227,6 @@ message ServerInfo {
 
 message GetServerInfoResponse {
   required ServerInfo server_info = 1;
-}
-
-message UpdateConfigurationRequest {
-}
-
-message UpdateConfigurationResponse {
 }
 
 service AdminService {
@@ -284,7 +274,4 @@ service AdminService {
 
   rpc UpdateFavoredNodes(UpdateFavoredNodesRequest)
     returns(UpdateFavoredNodesResponse);
-
-  rpc UpdateConfiguration(UpdateConfigurationRequest)
-    returns(UpdateConfigurationResponse);
 }

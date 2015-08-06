@@ -26,3 +26,6 @@ func (m *LoadBalancerState) GetBalancerOn() bool {
 	}
 	return false
 }
+
+func init() {
+}

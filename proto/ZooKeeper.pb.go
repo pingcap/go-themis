@@ -165,8 +165,7 @@ func (x *ReplicationState_State) UnmarshalJSON(data []byte) error {
 // *
 // Content of the meta-region-server znode.
 type MetaRegionServer struct {
-	// The ServerName hosting the meta region currently, or destination server,
-	// if meta region is in transition.
+	// The ServerName hosting the meta region currently.
 	Server *ServerName `protobuf:"bytes,1,req,name=server" json:"server,omitempty"`
 	// The major version of the rpc the server speaks.  This is used so that
 	// clients connecting to the cluster can have prior knowledge of what version
@@ -209,7 +208,6 @@ type Master struct {
 	Master *ServerName `protobuf:"bytes,1,req,name=master" json:"master,omitempty"`
 	// Major RPC version so that clients can know what version the master can accept.
 	RpcVersion       *uint32 `protobuf:"varint,2,opt,name=rpc_version" json:"rpc_version,omitempty"`
-	InfoPort         *uint32 `protobuf:"varint,3,opt,name=info_port" json:"info_port,omitempty"`
 	XXX_unrecognized []byte  `json:"-"`
 }
 
@@ -227,13 +225,6 @@ func (m *Master) GetMaster() *ServerName {
 func (m *Master) GetRpcVersion() uint32 {
 	if m != nil && m.RpcVersion != nil {
 		return *m.RpcVersion
-	}
-	return 0
-}
-
-func (m *Master) GetInfoPort() uint32 {
-	if m != nil && m.InfoPort != nil {
-		return *m.InfoPort
 	}
 	return 0
 }
@@ -435,7 +426,7 @@ func (m *ReplicationState) GetState() ReplicationState_State {
 }
 
 // *
-// Used by replication. Holds the current position in an WAL file.
+// Used by replication. Holds the current position in an HLog file.
 type ReplicationHLogPosition struct {
 	Position         *int64 `protobuf:"varint,1,req,name=position" json:"position,omitempty"`
 	XXX_unrecognized []byte `json:"-"`

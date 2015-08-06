@@ -20,10 +20,10 @@ package proto;
 // ZNode data in hbase are serialized protobufs with a four byte
 // 'magic' 'PBUF' prefix.
 
-
-
-
-
+option java_package = "org.apache.hadoop.hbase.protobuf.generated";
+option java_outer_classname = "ZooKeeperProtos";
+option java_generic_services = true;
+option java_generate_equals_and_hash = true;
 option optimize_for = SPEED;
 
 import "HBase.proto";
@@ -33,14 +33,12 @@ import "ClusterStatus.proto";
  * Content of the meta-region-server znode.
  */
 message MetaRegionServer {
-  // The ServerName hosting the meta region currently, or destination server,
-  // if meta region is in transition.
+  // The ServerName hosting the meta region currently.
   required ServerName server = 1;
   // The major version of the rpc the server speaks.  This is used so that
   // clients connecting to the cluster can have prior knowledge of what version
   // to send to a RegionServer.  AsyncHBase will use this to detect versions.
   optional uint32 rpc_version = 2;
-
   // State of the region transition. OPEN means fully operational 'hbase:meta'
   optional RegionState.State state = 3;
 }
@@ -53,7 +51,6 @@ message Master {
   required ServerName master = 1;
   // Major RPC version so that clients can know what version the master can accept.
   optional uint32 rpc_version = 2;
-  optional uint32 info_port = 3;
 }
 
 /**
@@ -143,7 +140,7 @@ message ReplicationState {
 }
 
 /**
- * Used by replication. Holds the current position in an WAL file.
+ * Used by replication. Holds the current position in an HLog file.
  */
 message ReplicationHLogPosition {
   required int64 position = 1;

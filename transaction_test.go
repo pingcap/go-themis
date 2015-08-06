@@ -32,8 +32,12 @@ func (s *TransactionTestSuit) TestTransaction(c *C) {
 			put2 := hbase.CreateNewPut([]byte("Bob"))
 			put2.AddValue([]byte("Account"), []byte("cash"), []byte(strconv.Itoa(i)))
 
+			put3 := hbase.CreateNewPut([]byte("Tom"))
+			put3.AddValue([]byte("Account"), []byte("cash"), []byte(strconv.Itoa(i)))
+
 			tx.Put("CashTable", put)
 			tx.Put("CashTable", put2)
+			tx.Put("CashTable", put3)
 
 			tx.Commit()
 		}(i)
@@ -60,4 +64,13 @@ func (s *TransactionTestSuit) TestTransaction(c *C) {
 	log.Info("return val:", rVal)
 	log.Info("return val2:", rVal2)
 	c.Assert(rVal >= 0 && rVal < 10 && rVal == rVal2, Equals, true)
+
+	scanner := tx.GetScanner([]byte("CashTable"), nil, nil)
+	for {
+		r := scanner.Next()
+		if r == nil {
+			break
+		}
+		log.Info("!!!!!!" + string(r.Row))
+	}
 }

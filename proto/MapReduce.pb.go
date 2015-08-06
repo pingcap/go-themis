@@ -58,3 +58,6 @@ func (m *TableSnapshotRegionSplit) GetRegion() *RegionInfo {
 	}
 	return nil
 }
+
+func init() {
+}

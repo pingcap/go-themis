@@ -74,3 +74,6 @@ func (m *ProcessResponse) GetRowProcessorResult() []byte {
 	}
 	return nil
 }
+
+func init() {
+}

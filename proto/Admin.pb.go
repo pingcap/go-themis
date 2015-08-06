@@ -674,9 +674,6 @@ func (m *RollWALWriterRequest) Reset()         { *m = RollWALWriterRequest{} }
 func (m *RollWALWriterRequest) String() string { return proto1.CompactTextString(m) }
 func (*RollWALWriterRequest) ProtoMessage()    {}
 
-//
-// Roll request responses no longer include regions to flush
-// this list will always be empty when talking to a 1.0 server
 type RollWALWriterResponse struct {
 	// A list of encoded name of regions to flush
 	RegionToFlush    [][]byte `protobuf:"bytes,1,rep,name=region_to_flush" json:"region_to_flush,omitempty"`
@@ -765,22 +762,6 @@ func (m *GetServerInfoResponse) GetServerInfo() *ServerInfo {
 	}
 	return nil
 }
-
-type UpdateConfigurationRequest struct {
-	XXX_unrecognized []byte `json:"-"`
-}
-
-func (m *UpdateConfigurationRequest) Reset()         { *m = UpdateConfigurationRequest{} }
-func (m *UpdateConfigurationRequest) String() string { return proto1.CompactTextString(m) }
-func (*UpdateConfigurationRequest) ProtoMessage()    {}
-
-type UpdateConfigurationResponse struct {
-	XXX_unrecognized []byte `json:"-"`
-}
-
-func (m *UpdateConfigurationResponse) Reset()         { *m = UpdateConfigurationResponse{} }
-func (m *UpdateConfigurationResponse) String() string { return proto1.CompactTextString(m) }
-func (*UpdateConfigurationResponse) ProtoMessage()    {}
 
 func init() {
 	proto1.RegisterEnum("proto.GetRegionInfoResponse_CompactionState", GetRegionInfoResponse_CompactionState_name, GetRegionInfoResponse_CompactionState_value)

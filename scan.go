@@ -12,7 +12,7 @@ import (
 func incrementByteString(d []byte, i int) []byte {
 	r := make([]byte, len(d))
 	copy(r, d)
-	if i <= 0 {
+	if i < 0 {
 		return append(make([]byte, 1), r...)
 	}
 	r[i]++
@@ -36,6 +36,7 @@ type Scan struct {
 	location     *RegionInfo
 	server       *connection
 	cache        []*hbase.ResultRow
+	attrs        map[string][]byte
 }
 
 func newScan(table []byte, client *client) *Scan {
@@ -47,6 +48,7 @@ func newScan(table []byte, client *client) *Scan {
 		qualifiers:   make([][][]byte, 0),
 		numCached:    100,
 		closed:       false,
+		attrs:        make(map[string][]byte),
 	}
 
 }
@@ -92,6 +94,10 @@ func (s *Scan) posOfFamily(family []byte) int {
 	return -1
 }
 
+func (s *Scan) addAttr(name string, val []byte) {
+	s.attrs[name] = val
+}
+
 func (s *Scan) getData(nextStart []byte) []*hbase.ResultRow {
 	if s.closed {
 		return nil
@@ -105,14 +111,20 @@ func (s *Scan) getData(nextStart []byte) []*hbase.ResultRow {
 			Value: []byte(location.Name),
 		},
 		NumberOfRows: pb.Uint32(uint32(s.numCached)),
-		Scan:         &proto.Scan{
-		//Attribute: []*proto.NameBytesPair{
-		//	&proto.NameBytesPair{
-		//		Name:  pb.String("_themisTransationStartTs_"),
-		//		Value: s.tsInBytes,
-		//	},
-		//},
-		},
+		Scan:         &proto.Scan{},
+	}
+
+	// set attributes
+	var attrs []*proto.NameBytesPair
+	for k, v := range s.attrs {
+		p := &proto.NameBytesPair{
+			Name:  pb.String(k),
+			Value: v,
+		}
+		attrs = append(attrs, p)
+	}
+	if len(attrs) > 0 {
+		req.Scan.Attribute = attrs
 	}
 
 	if s.id > 0 {
@@ -160,7 +172,7 @@ func (s *Scan) processResponse(response pb.Message) []*hbase.ResultRow {
 	if (n == s.numCached) ||
 		len(s.location.EndKey) == 0 ||
 		(s.StopRow != nil && bytes.Compare(s.location.EndKey, s.StopRow) > 0 && n < s.numCached) ||
-		(res.GetMoreResults() && n > 0) {
+		(res.GetMoreResultsInRegion() && n > 0) {
 		nextRegion = false
 	}
 

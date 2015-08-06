@@ -21,10 +21,10 @@ package proto;
  * See BaseRowProcessorEndpoint for the implementation.
  * See HRegion#processRowsWithLocks() for details.
  */
-
-
-
-
+option java_package = "org.apache.hadoop.hbase.protobuf.generated";
+option java_outer_classname = "RowProcessorProtos";
+option java_generic_services = true;
+option java_generate_equals_and_hash = true;
 option optimize_for = SPEED;
 
 message ProcessRequest {

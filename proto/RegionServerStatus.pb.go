@@ -213,7 +213,7 @@ func (m *GetLastFlushedSequenceIdRequest) GetRegionName() []byte {
 }
 
 type GetLastFlushedSequenceIdResponse struct {
-	// the last WAL sequence id flushed from MemStore to HFile for the region
+	// * the last HLog sequence id flushed from MemStore to HFile for the region
 	LastFlushedSequenceId *uint64 `protobuf:"varint,1,req,name=last_flushed_sequence_id" json:"last_flushed_sequence_id,omitempty"`
 	XXX_unrecognized      []byte  `json:"-"`
 }

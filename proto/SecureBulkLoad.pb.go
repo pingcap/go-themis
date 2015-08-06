@@ -162,3 +162,6 @@ type CleanupBulkLoadResponse struct {
 func (m *CleanupBulkLoadResponse) Reset()         { *m = CleanupBulkLoadResponse{} }
 func (m *CleanupBulkLoadResponse) String() string { return proto1.CompactTextString(m) }
 func (*CleanupBulkLoadResponse) ProtoMessage()    {}
+
+func init() {
+}

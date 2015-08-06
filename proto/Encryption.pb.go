@@ -58,3 +58,6 @@ func (m *WrappedKey) GetHash() []byte {
 	}
 	return nil
 }
+
+func init() {
+}

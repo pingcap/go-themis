@@ -266,3 +266,6 @@ func (m *LockExpiredResponse) GetExpired() bool {
 	}
 	return false
 }
+
+func init() {
+}

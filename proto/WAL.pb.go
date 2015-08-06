@@ -44,75 +44,6 @@ func (x *ScopeType) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-type FlushDescriptor_FlushAction int32
-
-const (
-	FlushDescriptor_START_FLUSH  FlushDescriptor_FlushAction = 0
-	FlushDescriptor_COMMIT_FLUSH FlushDescriptor_FlushAction = 1
-	FlushDescriptor_ABORT_FLUSH  FlushDescriptor_FlushAction = 2
-)
-
-var FlushDescriptor_FlushAction_name = map[int32]string{
-	0: "START_FLUSH",
-	1: "COMMIT_FLUSH",
-	2: "ABORT_FLUSH",
-}
-var FlushDescriptor_FlushAction_value = map[string]int32{
-	"START_FLUSH":  0,
-	"COMMIT_FLUSH": 1,
-	"ABORT_FLUSH":  2,
-}
-
-func (x FlushDescriptor_FlushAction) Enum() *FlushDescriptor_FlushAction {
-	p := new(FlushDescriptor_FlushAction)
-	*p = x
-	return p
-}
-func (x FlushDescriptor_FlushAction) String() string {
-	return proto1.EnumName(FlushDescriptor_FlushAction_name, int32(x))
-}
-func (x *FlushDescriptor_FlushAction) UnmarshalJSON(data []byte) error {
-	value, err := proto1.UnmarshalJSONEnum(FlushDescriptor_FlushAction_value, data, "FlushDescriptor_FlushAction")
-	if err != nil {
-		return err
-	}
-	*x = FlushDescriptor_FlushAction(value)
-	return nil
-}
-
-type RegionEventDescriptor_EventType int32
-
-const (
-	RegionEventDescriptor_REGION_OPEN  RegionEventDescriptor_EventType = 0
-	RegionEventDescriptor_REGION_CLOSE RegionEventDescriptor_EventType = 1
-)
-
-var RegionEventDescriptor_EventType_name = map[int32]string{
-	0: "REGION_OPEN",
-	1: "REGION_CLOSE",
-}
-var RegionEventDescriptor_EventType_value = map[string]int32{
-	"REGION_OPEN":  0,
-	"REGION_CLOSE": 1,
-}
-
-func (x RegionEventDescriptor_EventType) Enum() *RegionEventDescriptor_EventType {
-	p := new(RegionEventDescriptor_EventType)
-	*p = x
-	return p
-}
-func (x RegionEventDescriptor_EventType) String() string {
-	return proto1.EnumName(RegionEventDescriptor_EventType_name, int32(x))
-}
-func (x *RegionEventDescriptor_EventType) UnmarshalJSON(data []byte) error {
-	value, err := proto1.UnmarshalJSONEnum(RegionEventDescriptor_EventType_value, data, "RegionEventDescriptor_EventType")
-	if err != nil {
-		return err
-	}
-	*x = RegionEventDescriptor_EventType(value)
-	return nil
-}
-
 type WALHeader struct {
 	HasCompression    *bool   `protobuf:"varint,1,opt,name=has_compression" json:"has_compression,omitempty"`
 	EncryptionKey     []byte  `protobuf:"bytes,2,opt,name=encryption_key" json:"encryption_key,omitempty"`
@@ -161,9 +92,7 @@ func (m *WALHeader) GetCellCodecClsName() string {
 	return ""
 }
 
-//
-// Protocol buffer version of WALKey; see WALKey comment, not really a key but WALEdit header
-// for some KVs
+// Protocol buffer version of HLogKey; see HLogKey comment, not really a key but WALEdit header for some KVs
 type WALKey struct {
 	EncodedRegionName []byte  `protobuf:"bytes,1,req,name=encoded_region_name" json:"encoded_region_name,omitempty"`
 	TableName         []byte  `protobuf:"bytes,2,req,name=table_name" json:"table_name,omitempty"`
@@ -180,11 +109,10 @@ type WALKey struct {
 	//
 	// This field contains the list of clusters that have
 	// consumed the change
-	ClusterIds         []*UUID `protobuf:"bytes,8,rep,name=cluster_ids" json:"cluster_ids,omitempty"`
-	NonceGroup         *uint64 `protobuf:"varint,9,opt,name=nonceGroup" json:"nonceGroup,omitempty"`
-	Nonce              *uint64 `protobuf:"varint,10,opt,name=nonce" json:"nonce,omitempty"`
-	OrigSequenceNumber *uint64 `protobuf:"varint,11,opt,name=orig_sequence_number" json:"orig_sequence_number,omitempty"`
-	XXX_unrecognized   []byte  `json:"-"`
+	ClusterIds       []*UUID `protobuf:"bytes,8,rep,name=cluster_ids" json:"cluster_ids,omitempty"`
+	NonceGroup       *uint64 `protobuf:"varint,9,opt,name=nonceGroup" json:"nonceGroup,omitempty"`
+	Nonce            *uint64 `protobuf:"varint,10,opt,name=nonce" json:"nonce,omitempty"`
+	XXX_unrecognized []byte  `json:"-"`
 }
 
 func (m *WALKey) Reset()         { *m = WALKey{} }
@@ -257,13 +185,6 @@ func (m *WALKey) GetNonceGroup() uint64 {
 func (m *WALKey) GetNonce() uint64 {
 	if m != nil && m.Nonce != nil {
 		return *m.Nonce
-	}
-	return 0
-}
-
-func (m *WALKey) GetOrigSequenceNumber() uint64 {
-	if m != nil && m.OrigSequenceNumber != nil {
-		return *m.OrigSequenceNumber
 	}
 	return 0
 }
@@ -362,240 +283,8 @@ func (m *CompactionDescriptor) GetRegionName() []byte {
 }
 
 // *
-// Special WAL entry to hold all related to a flush.
-type FlushDescriptor struct {
-	Action              *FlushDescriptor_FlushAction            `protobuf:"varint,1,req,name=action,enum=proto.FlushDescriptor_FlushAction" json:"action,omitempty"`
-	TableName           []byte                                  `protobuf:"bytes,2,req,name=table_name" json:"table_name,omitempty"`
-	EncodedRegionName   []byte                                  `protobuf:"bytes,3,req,name=encoded_region_name" json:"encoded_region_name,omitempty"`
-	FlushSequenceNumber *uint64                                 `protobuf:"varint,4,opt,name=flush_sequence_number" json:"flush_sequence_number,omitempty"`
-	StoreFlushes        []*FlushDescriptor_StoreFlushDescriptor `protobuf:"bytes,5,rep,name=store_flushes" json:"store_flushes,omitempty"`
-	RegionName          []byte                                  `protobuf:"bytes,6,opt,name=region_name" json:"region_name,omitempty"`
-	XXX_unrecognized    []byte                                  `json:"-"`
-}
-
-func (m *FlushDescriptor) Reset()         { *m = FlushDescriptor{} }
-func (m *FlushDescriptor) String() string { return proto1.CompactTextString(m) }
-func (*FlushDescriptor) ProtoMessage()    {}
-
-func (m *FlushDescriptor) GetAction() FlushDescriptor_FlushAction {
-	if m != nil && m.Action != nil {
-		return *m.Action
-	}
-	return FlushDescriptor_START_FLUSH
-}
-
-func (m *FlushDescriptor) GetTableName() []byte {
-	if m != nil {
-		return m.TableName
-	}
-	return nil
-}
-
-func (m *FlushDescriptor) GetEncodedRegionName() []byte {
-	if m != nil {
-		return m.EncodedRegionName
-	}
-	return nil
-}
-
-func (m *FlushDescriptor) GetFlushSequenceNumber() uint64 {
-	if m != nil && m.FlushSequenceNumber != nil {
-		return *m.FlushSequenceNumber
-	}
-	return 0
-}
-
-func (m *FlushDescriptor) GetStoreFlushes() []*FlushDescriptor_StoreFlushDescriptor {
-	if m != nil {
-		return m.StoreFlushes
-	}
-	return nil
-}
-
-func (m *FlushDescriptor) GetRegionName() []byte {
-	if m != nil {
-		return m.RegionName
-	}
-	return nil
-}
-
-type FlushDescriptor_StoreFlushDescriptor struct {
-	FamilyName       []byte   `protobuf:"bytes,1,req,name=family_name" json:"family_name,omitempty"`
-	StoreHomeDir     *string  `protobuf:"bytes,2,req,name=store_home_dir" json:"store_home_dir,omitempty"`
-	FlushOutput      []string `protobuf:"bytes,3,rep,name=flush_output" json:"flush_output,omitempty"`
-	XXX_unrecognized []byte   `json:"-"`
-}
-
-func (m *FlushDescriptor_StoreFlushDescriptor) Reset()         { *m = FlushDescriptor_StoreFlushDescriptor{} }
-func (m *FlushDescriptor_StoreFlushDescriptor) String() string { return proto1.CompactTextString(m) }
-func (*FlushDescriptor_StoreFlushDescriptor) ProtoMessage()    {}
-
-func (m *FlushDescriptor_StoreFlushDescriptor) GetFamilyName() []byte {
-	if m != nil {
-		return m.FamilyName
-	}
-	return nil
-}
-
-func (m *FlushDescriptor_StoreFlushDescriptor) GetStoreHomeDir() string {
-	if m != nil && m.StoreHomeDir != nil {
-		return *m.StoreHomeDir
-	}
-	return ""
-}
-
-func (m *FlushDescriptor_StoreFlushDescriptor) GetFlushOutput() []string {
-	if m != nil {
-		return m.FlushOutput
-	}
-	return nil
-}
-
-type StoreDescriptor struct {
-	FamilyName       []byte   `protobuf:"bytes,1,req,name=family_name" json:"family_name,omitempty"`
-	StoreHomeDir     *string  `protobuf:"bytes,2,req,name=store_home_dir" json:"store_home_dir,omitempty"`
-	StoreFile        []string `protobuf:"bytes,3,rep,name=store_file" json:"store_file,omitempty"`
-	XXX_unrecognized []byte   `json:"-"`
-}
-
-func (m *StoreDescriptor) Reset()         { *m = StoreDescriptor{} }
-func (m *StoreDescriptor) String() string { return proto1.CompactTextString(m) }
-func (*StoreDescriptor) ProtoMessage()    {}
-
-func (m *StoreDescriptor) GetFamilyName() []byte {
-	if m != nil {
-		return m.FamilyName
-	}
-	return nil
-}
-
-func (m *StoreDescriptor) GetStoreHomeDir() string {
-	if m != nil && m.StoreHomeDir != nil {
-		return *m.StoreHomeDir
-	}
-	return ""
-}
-
-func (m *StoreDescriptor) GetStoreFile() []string {
-	if m != nil {
-		return m.StoreFile
-	}
-	return nil
-}
-
-// *
-// Special WAL entry used for writing bulk load events to WAL
-type BulkLoadDescriptor struct {
-	TableName         *TableName         `protobuf:"bytes,1,req,name=table_name" json:"table_name,omitempty"`
-	EncodedRegionName []byte             `protobuf:"bytes,2,req,name=encoded_region_name" json:"encoded_region_name,omitempty"`
-	Stores            []*StoreDescriptor `protobuf:"bytes,3,rep,name=stores" json:"stores,omitempty"`
-	BulkloadSeqNum    *int64             `protobuf:"varint,4,req,name=bulkload_seq_num" json:"bulkload_seq_num,omitempty"`
-	XXX_unrecognized  []byte             `json:"-"`
-}
-
-func (m *BulkLoadDescriptor) Reset()         { *m = BulkLoadDescriptor{} }
-func (m *BulkLoadDescriptor) String() string { return proto1.CompactTextString(m) }
-func (*BulkLoadDescriptor) ProtoMessage()    {}
-
-func (m *BulkLoadDescriptor) GetTableName() *TableName {
-	if m != nil {
-		return m.TableName
-	}
-	return nil
-}
-
-func (m *BulkLoadDescriptor) GetEncodedRegionName() []byte {
-	if m != nil {
-		return m.EncodedRegionName
-	}
-	return nil
-}
-
-func (m *BulkLoadDescriptor) GetStores() []*StoreDescriptor {
-	if m != nil {
-		return m.Stores
-	}
-	return nil
-}
-
-func (m *BulkLoadDescriptor) GetBulkloadSeqNum() int64 {
-	if m != nil && m.BulkloadSeqNum != nil {
-		return *m.BulkloadSeqNum
-	}
-	return 0
-}
-
-// *
-// Special WAL entry to hold all related to a region event (open/close).
-type RegionEventDescriptor struct {
-	EventType         *RegionEventDescriptor_EventType `protobuf:"varint,1,req,name=event_type,enum=proto.RegionEventDescriptor_EventType" json:"event_type,omitempty"`
-	TableName         []byte                           `protobuf:"bytes,2,req,name=table_name" json:"table_name,omitempty"`
-	EncodedRegionName []byte                           `protobuf:"bytes,3,req,name=encoded_region_name" json:"encoded_region_name,omitempty"`
-	LogSequenceNumber *uint64                          `protobuf:"varint,4,opt,name=log_sequence_number" json:"log_sequence_number,omitempty"`
-	Stores            []*StoreDescriptor               `protobuf:"bytes,5,rep,name=stores" json:"stores,omitempty"`
-	Server            *ServerName                      `protobuf:"bytes,6,opt,name=server" json:"server,omitempty"`
-	RegionName        []byte                           `protobuf:"bytes,7,opt,name=region_name" json:"region_name,omitempty"`
-	XXX_unrecognized  []byte                           `json:"-"`
-}
-
-func (m *RegionEventDescriptor) Reset()         { *m = RegionEventDescriptor{} }
-func (m *RegionEventDescriptor) String() string { return proto1.CompactTextString(m) }
-func (*RegionEventDescriptor) ProtoMessage()    {}
-
-func (m *RegionEventDescriptor) GetEventType() RegionEventDescriptor_EventType {
-	if m != nil && m.EventType != nil {
-		return *m.EventType
-	}
-	return RegionEventDescriptor_REGION_OPEN
-}
-
-func (m *RegionEventDescriptor) GetTableName() []byte {
-	if m != nil {
-		return m.TableName
-	}
-	return nil
-}
-
-func (m *RegionEventDescriptor) GetEncodedRegionName() []byte {
-	if m != nil {
-		return m.EncodedRegionName
-	}
-	return nil
-}
-
-func (m *RegionEventDescriptor) GetLogSequenceNumber() uint64 {
-	if m != nil && m.LogSequenceNumber != nil {
-		return *m.LogSequenceNumber
-	}
-	return 0
-}
-
-func (m *RegionEventDescriptor) GetStores() []*StoreDescriptor {
-	if m != nil {
-		return m.Stores
-	}
-	return nil
-}
-
-func (m *RegionEventDescriptor) GetServer() *ServerName {
-	if m != nil {
-		return m.Server
-	}
-	return nil
-}
-
-func (m *RegionEventDescriptor) GetRegionName() []byte {
-	if m != nil {
-		return m.RegionName
-	}
-	return nil
-}
-
-// *
-// A trailer that is appended to the end of a properly closed WAL file.
+// A trailer that is appended to the end of a properly closed HLog WAL file.
 // If missing, this is either a legacy or a corrupted WAL file.
-// N.B. This trailer currently doesn't contain any information and we
-// purposefully don't expose it in the WAL APIs. It's for future growth.
 type WALTrailer struct {
 	XXX_unrecognized []byte `json:"-"`
 }
@@ -606,6 +295,4 @@ func (*WALTrailer) ProtoMessage()    {}
 
 func init() {
 	proto1.RegisterEnum("proto.ScopeType", ScopeType_name, ScopeType_value)
-	proto1.RegisterEnum("proto.FlushDescriptor_FlushAction", FlushDescriptor_FlushAction_name, FlushDescriptor_FlushAction_value)
-	proto1.RegisterEnum("proto.RegionEventDescriptor_EventType", RegionEventDescriptor_EventType_name, RegionEventDescriptor_EventType_value)
 }

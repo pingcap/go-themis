@@ -25,7 +25,6 @@ It is generated from these files:
 	MapReduce.proto
 	Master.proto
 	MultiRowMutation.proto
-	Quota.proto
 	RPC.proto
 	RegionServerStatus.proto
 	RowProcessor.proto

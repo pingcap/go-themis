@@ -140,3 +140,6 @@ func (m *FileTrailerProto) GetEncryptionKey() []byte {
 	}
 	return nil
 }
+
+func init() {
+}

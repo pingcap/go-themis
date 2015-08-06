@@ -19,10 +19,10 @@ package proto;
 
 // This file contains protocol buffers that are used for filters
 
-
-
-
-
+option java_package = "org.apache.hadoop.hbase.protobuf.generated";
+option java_outer_classname = "ComparatorProtos";
+option java_generic_services = true;
+option java_generate_equals_and_hash = true;
 option optimize_for = SPEED;
 
 // This file contains protocol buffers that are used for comparators (e.g. in filters)

@@ -125,3 +125,6 @@ func (m *ForeignExceptionMessage) GetGenericException() *GenericExceptionMessage
 	}
 	return nil
 }
+
+func init() {
+}

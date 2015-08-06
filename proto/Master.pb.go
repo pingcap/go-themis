@@ -321,40 +321,6 @@ func (m *DeleteTableResponse) Reset()         { *m = DeleteTableResponse{} }
 func (m *DeleteTableResponse) String() string { return proto1.CompactTextString(m) }
 func (*DeleteTableResponse) ProtoMessage()    {}
 
-type TruncateTableRequest struct {
-	TableName        *TableName `protobuf:"bytes,1,req,name=tableName" json:"tableName,omitempty"`
-	PreserveSplits   *bool      `protobuf:"varint,2,opt,name=preserveSplits,def=0" json:"preserveSplits,omitempty"`
-	XXX_unrecognized []byte     `json:"-"`
-}
-
-func (m *TruncateTableRequest) Reset()         { *m = TruncateTableRequest{} }
-func (m *TruncateTableRequest) String() string { return proto1.CompactTextString(m) }
-func (*TruncateTableRequest) ProtoMessage()    {}
-
-const Default_TruncateTableRequest_PreserveSplits bool = false
-
-func (m *TruncateTableRequest) GetTableName() *TableName {
-	if m != nil {
-		return m.TableName
-	}
-	return nil
-}
-
-func (m *TruncateTableRequest) GetPreserveSplits() bool {
-	if m != nil && m.PreserveSplits != nil {
-		return *m.PreserveSplits
-	}
-	return Default_TruncateTableRequest_PreserveSplits
-}
-
-type TruncateTableResponse struct {
-	XXX_unrecognized []byte `json:"-"`
-}
-
-func (m *TruncateTableResponse) Reset()         { *m = TruncateTableResponse{} }
-func (m *TruncateTableResponse) String() string { return proto1.CompactTextString(m) }
-func (*TruncateTableResponse) ProtoMessage()    {}
-
 type EnableTableRequest struct {
 	TableName        *TableName `protobuf:"bytes,1,req,name=table_name" json:"table_name,omitempty"`
 	XXX_unrecognized []byte     `json:"-"`
@@ -727,6 +693,30 @@ func (m *SetBalancerRunningResponse) GetPrevBalanceValue() bool {
 	return false
 }
 
+type IsBalancerEnabledRequest struct {
+	XXX_unrecognized []byte `json:"-"`
+}
+
+func (m *IsBalancerEnabledRequest) Reset()         { *m = IsBalancerEnabledRequest{} }
+func (m *IsBalancerEnabledRequest) String() string { return proto1.CompactTextString(m) }
+func (*IsBalancerEnabledRequest) ProtoMessage()    {}
+
+type IsBalancerEnabledResponse struct {
+	Enabled          *bool  `protobuf:"varint,1,req,name=enabled" json:"enabled,omitempty"`
+	XXX_unrecognized []byte `json:"-"`
+}
+
+func (m *IsBalancerEnabledResponse) Reset()         { *m = IsBalancerEnabledResponse{} }
+func (m *IsBalancerEnabledResponse) String() string { return proto1.CompactTextString(m) }
+func (*IsBalancerEnabledResponse) ProtoMessage()    {}
+
+func (m *IsBalancerEnabledResponse) GetEnabled() bool {
+	if m != nil && m.Enabled != nil {
+		return *m.Enabled
+	}
+	return false
+}
+
 type RunCatalogScanRequest struct {
 	XXX_unrecognized []byte `json:"-"`
 }
@@ -1031,9 +1021,6 @@ func (m *GetSchemaAlterStatusResponse) GetTotalRegions() uint32 {
 
 type GetTableDescriptorsRequest struct {
 	TableNames       []*TableName `protobuf:"bytes,1,rep,name=table_names" json:"table_names,omitempty"`
-	Regex            *string      `protobuf:"bytes,2,opt,name=regex" json:"regex,omitempty"`
-	IncludeSysTables *bool        `protobuf:"varint,3,opt,name=include_sys_tables,def=0" json:"include_sys_tables,omitempty"`
-	Namespace        *string      `protobuf:"bytes,4,opt,name=namespace" json:"namespace,omitempty"`
 	XXX_unrecognized []byte       `json:"-"`
 }
 
@@ -1041,34 +1028,11 @@ func (m *GetTableDescriptorsRequest) Reset()         { *m = GetTableDescriptorsR
 func (m *GetTableDescriptorsRequest) String() string { return proto1.CompactTextString(m) }
 func (*GetTableDescriptorsRequest) ProtoMessage()    {}
 
-const Default_GetTableDescriptorsRequest_IncludeSysTables bool = false
-
 func (m *GetTableDescriptorsRequest) GetTableNames() []*TableName {
 	if m != nil {
 		return m.TableNames
 	}
 	return nil
-}
-
-func (m *GetTableDescriptorsRequest) GetRegex() string {
-	if m != nil && m.Regex != nil {
-		return *m.Regex
-	}
-	return ""
-}
-
-func (m *GetTableDescriptorsRequest) GetIncludeSysTables() bool {
-	if m != nil && m.IncludeSysTables != nil {
-		return *m.IncludeSysTables
-	}
-	return Default_GetTableDescriptorsRequest_IncludeSysTables
-}
-
-func (m *GetTableDescriptorsRequest) GetNamespace() string {
-	if m != nil && m.Namespace != nil {
-		return *m.Namespace
-	}
-	return ""
 }
 
 type GetTableDescriptorsResponse struct {
@@ -1088,38 +1052,12 @@ func (m *GetTableDescriptorsResponse) GetTableSchema() []*TableSchema {
 }
 
 type GetTableNamesRequest struct {
-	Regex            *string `protobuf:"bytes,1,opt,name=regex" json:"regex,omitempty"`
-	IncludeSysTables *bool   `protobuf:"varint,2,opt,name=include_sys_tables,def=0" json:"include_sys_tables,omitempty"`
-	Namespace        *string `protobuf:"bytes,3,opt,name=namespace" json:"namespace,omitempty"`
-	XXX_unrecognized []byte  `json:"-"`
+	XXX_unrecognized []byte `json:"-"`
 }
 
 func (m *GetTableNamesRequest) Reset()         { *m = GetTableNamesRequest{} }
 func (m *GetTableNamesRequest) String() string { return proto1.CompactTextString(m) }
 func (*GetTableNamesRequest) ProtoMessage()    {}
-
-const Default_GetTableNamesRequest_IncludeSysTables bool = false
-
-func (m *GetTableNamesRequest) GetRegex() string {
-	if m != nil && m.Regex != nil {
-		return *m.Regex
-	}
-	return ""
-}
-
-func (m *GetTableNamesRequest) GetIncludeSysTables() bool {
-	if m != nil && m.IncludeSysTables != nil {
-		return *m.IncludeSysTables
-	}
-	return Default_GetTableNamesRequest_IncludeSysTables
-}
-
-func (m *GetTableNamesRequest) GetNamespace() string {
-	if m != nil && m.Namespace != nil {
-		return *m.Namespace
-	}
-	return ""
-}
 
 type GetTableNamesResponse struct {
 	TableNames       []*TableName `protobuf:"bytes,1,rep,name=table_names" json:"table_names,omitempty"`
@@ -1202,8 +1140,7 @@ func (m *ExecProcedureRequest) GetProcedure() *ProcedureDescription {
 }
 
 type ExecProcedureResponse struct {
-	ExpectedTimeout  *int64 `protobuf:"varint,1,opt,name=expected_timeout" json:"expected_timeout,omitempty"`
-	ReturnData       []byte `protobuf:"bytes,2,opt,name=return_data" json:"return_data,omitempty"`
+	ExpectedTimeout  *int64 `protobuf:"varint,1,req,name=expected_timeout" json:"expected_timeout,omitempty"`
 	XXX_unrecognized []byte `json:"-"`
 }
 
@@ -1216,13 +1153,6 @@ func (m *ExecProcedureResponse) GetExpectedTimeout() int64 {
 		return *m.ExpectedTimeout
 	}
 	return 0
-}
-
-func (m *ExecProcedureResponse) GetReturnData() []byte {
-	if m != nil {
-		return m.ReturnData
-	}
-	return nil
 }
 
 type IsProcedureDoneRequest struct {
@@ -1267,74 +1197,39 @@ func (m *IsProcedureDoneResponse) GetSnapshot() *ProcedureDescription {
 	return nil
 }
 
-type SetQuotaRequest struct {
-	UserName         *string          `protobuf:"bytes,1,opt,name=user_name" json:"user_name,omitempty"`
-	UserGroup        *string          `protobuf:"bytes,2,opt,name=user_group" json:"user_group,omitempty"`
-	Namespace        *string          `protobuf:"bytes,3,opt,name=namespace" json:"namespace,omitempty"`
-	TableName        *TableName       `protobuf:"bytes,4,opt,name=table_name" json:"table_name,omitempty"`
-	RemoveAll        *bool            `protobuf:"varint,5,opt,name=remove_all" json:"remove_all,omitempty"`
-	BypassGlobals    *bool            `protobuf:"varint,6,opt,name=bypass_globals" json:"bypass_globals,omitempty"`
-	Throttle         *ThrottleRequest `protobuf:"bytes,7,opt,name=throttle" json:"throttle,omitempty"`
-	XXX_unrecognized []byte           `json:"-"`
+type TruncateTableRequest struct {
+	TableName        *TableName `protobuf:"bytes,1,req,name=tableName" json:"tableName,omitempty"`
+	PreserveSplits   *bool      `protobuf:"varint,2,opt,name=preserveSplits,def=0" json:"preserveSplits,omitempty"`
+	XXX_unrecognized []byte     `json:"-"`
 }
 
-func (m *SetQuotaRequest) Reset()         { *m = SetQuotaRequest{} }
-func (m *SetQuotaRequest) String() string { return proto1.CompactTextString(m) }
-func (*SetQuotaRequest) ProtoMessage()    {}
+func (m *TruncateTableRequest) Reset()         { *m = TruncateTableRequest{} }
+func (m *TruncateTableRequest) String() string { return proto1.CompactTextString(m) }
+func (*TruncateTableRequest) ProtoMessage()    {}
 
-func (m *SetQuotaRequest) GetUserName() string {
-	if m != nil && m.UserName != nil {
-		return *m.UserName
-	}
-	return ""
-}
+const Default_TruncateTableRequest_PreserveSplits bool = false
 
-func (m *SetQuotaRequest) GetUserGroup() string {
-	if m != nil && m.UserGroup != nil {
-		return *m.UserGroup
-	}
-	return ""
-}
-
-func (m *SetQuotaRequest) GetNamespace() string {
-	if m != nil && m.Namespace != nil {
-		return *m.Namespace
-	}
-	return ""
-}
-
-func (m *SetQuotaRequest) GetTableName() *TableName {
+func (m *TruncateTableRequest) GetTableName() *TableName {
 	if m != nil {
 		return m.TableName
 	}
 	return nil
 }
 
-func (m *SetQuotaRequest) GetRemoveAll() bool {
-	if m != nil && m.RemoveAll != nil {
-		return *m.RemoveAll
+func (m *TruncateTableRequest) GetPreserveSplits() bool {
+	if m != nil && m.PreserveSplits != nil {
+		return *m.PreserveSplits
 	}
-	return false
+	return Default_TruncateTableRequest_PreserveSplits
 }
 
-func (m *SetQuotaRequest) GetBypassGlobals() bool {
-	if m != nil && m.BypassGlobals != nil {
-		return *m.BypassGlobals
-	}
-	return false
-}
-
-func (m *SetQuotaRequest) GetThrottle() *ThrottleRequest {
-	if m != nil {
-		return m.Throttle
-	}
-	return nil
-}
-
-type SetQuotaResponse struct {
+type TruncateTableResponse struct {
 	XXX_unrecognized []byte `json:"-"`
 }
 
-func (m *SetQuotaResponse) Reset()         { *m = SetQuotaResponse{} }
-func (m *SetQuotaResponse) String() string { return proto1.CompactTextString(m) }
-func (*SetQuotaResponse) ProtoMessage()    {}
+func (m *TruncateTableResponse) Reset()         { *m = TruncateTableResponse{} }
+func (m *TruncateTableResponse) String() string { return proto1.CompactTextString(m) }
+func (*TruncateTableResponse) ProtoMessage()    {}
+
+func init() {
+}

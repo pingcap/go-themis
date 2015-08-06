@@ -66,3 +66,6 @@ type MutateRowsResponse struct {
 func (m *MutateRowsResponse) Reset()         { *m = MutateRowsResponse{} }
 func (m *MutateRowsResponse) String() string { return proto1.CompactTextString(m) }
 func (*MutateRowsResponse) ProtoMessage()    {}
+
+func init() {
+}

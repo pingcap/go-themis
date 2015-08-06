@@ -202,3 +202,6 @@ func (m *ListLabelsResponse) GetLabel() [][]byte {
 	}
 	return nil
 }
+
+func init() {
+}
