@@ -65,6 +65,7 @@ func (txn *Txn) Get(tbl string, g *hbase.Get) (*hbase.ResultRow, error) {
 	}
 	// contain locks, try to clean and get again
 	if isLockResult(r) {
+		log.Warning("get lock, try to clean and get again")
 		locks, err := constructLocks([]byte(tbl), r.SortedColumns, txn.themisCli)
 		for _, lock := range locks {
 			err := txn.tryToCleanLock(lock)
@@ -73,7 +74,7 @@ func (txn *Txn) Get(tbl string, g *hbase.Get) (*hbase.ResultRow, error) {
 				return nil, err
 			}
 		}
-		// get again
+		// get again, ignore lock
 		r, err = txn.themisCli.themisGet([]byte(tbl), g, txn.startTs, true)
 		if err != nil {
 			return nil, err
