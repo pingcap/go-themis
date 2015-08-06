@@ -2,7 +2,6 @@ package themis
 
 import (
 	"bytes"
-	"encoding/binary"
 
 	pb "github.com/golang/protobuf/proto"
 	"github.com/ngaut/log"
@@ -39,18 +38,13 @@ type Scan struct {
 	cache        []*hbase.ResultRow
 }
 
-func newScan(table []byte, client *client, txn *Txn, ts uint64) *Scan {
-	b := bytes.NewBuffer(nil)
-	binary.Write(b, binary.BigEndian, ts)
+func newScan(table []byte, client *client) *Scan {
 	return &Scan{
 		client:       client,
 		table:        table,
 		nextStartRow: nil,
 		families:     make([][]byte, 0),
 		qualifiers:   make([][][]byte, 0),
-		ts:           ts,
-		tsInBytes:    b.Bytes(),
-		txn:          txn,
 		numCached:    100,
 		closed:       false,
 	}
@@ -223,6 +217,7 @@ func (s *Scan) Next() *hbase.ResultRow {
 }
 
 func (s *Scan) closeScan(server *connection, location *RegionInfo, id uint64) {
+	log.Info("closing scan...")
 	req := &proto.ScanRequest{
 		Region: &proto.RegionSpecifier{
 			Type:  proto.RegionSpecifier_REGION_NAME.Enum(),

@@ -33,7 +33,7 @@ func (s *HBaseClientTestSuit) TestHBaseClient(c *C) {
 
 	c.Assert(bytes.Compare(result.Columns["cf:q"].Value, []byte("v")) == 0, Equals, true)
 
-	scan := newScan([]byte("t1"), cli, nil, 0)
+	scan := newScan([]byte("t1"), cli)
 	scan.StartRow = []byte("hello_\x00")
 	scan.StopRow = []byte("hello_\xff")
 

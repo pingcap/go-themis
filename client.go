@@ -209,6 +209,60 @@ func (c *client) parseRegion(rr *hbase.ResultRow) *RegionInfo {
 	return nil
 }
 
+func (c *client) cacheLocation(table []byte, region *RegionInfo) {
+	tableStr := string(table)
+	if _, ok := c.cachedRegionInfo[tableStr]; !ok {
+		c.cachedRegionInfo[tableStr] = make(map[string]*RegionInfo)
+	}
+	c.cachedRegionInfo[tableStr][region.Name] = region
+}
+
+func (c *client) prefetchRegionCache(table []byte) {
+	if bytes.Equal(table, metaTableName) {
+		return
+	}
+
+	if v, ok := c.prefetched[string(table)]; ok && v {
+		return
+	}
+
+	startRow := table
+	stopRow := incrementByteString(table, len(table)-1)
+
+	scan := newScan(metaTableName, c)
+
+	scan.StartRow = startRow
+	scan.StopRow = stopRow
+
+	for {
+		r := scan.Next()
+		if r == nil || scan.closed {
+			break
+		}
+		region := c.parseRegion(r)
+		if region != nil {
+			c.cacheLocation(table, region)
+		}
+	}
+
+	c.prefetched[string(table)] = true
+}
+
+func (c *client) getCachedLocation(table, row []byte) *RegionInfo {
+	tableStr := string(table)
+	if regions, ok := c.cachedRegionInfo[tableStr]; ok {
+		for _, region := range regions {
+			if (len(region.EndKey) == 0 ||
+				bytes.Compare(row, region.EndKey) < 0) &&
+				(len(region.StartKey) == 0 ||
+					bytes.Compare(row, region.StartKey) >= 0) {
+				return region
+			}
+		}
+	}
+	return nil
+}
+
 func (c *client) locateRegion(table, row []byte, useCache bool) *RegionInfo {
 	metaRegion := &RegionInfo{
 		StartKey: []byte{},
@@ -221,7 +275,10 @@ func (c *client) locateRegion(table, row []byte, useCache bool) *RegionInfo {
 		return metaRegion
 	}
 
-	// TODO: use region cache
+	c.prefetchRegionCache(table)
+	if r := c.getCachedLocation(table, row); r != nil && useCache {
+		return r
+	}
 
 	conn := c.getConn(metaRegion.Server, false)
 
@@ -250,7 +307,8 @@ func (c *client) locateRegion(table, row []byte, useCache bool) *RegionInfo {
 		rr := hbase.NewResultRow(r.GetResult())
 		if region := c.parseRegion(rr); region != nil {
 			log.Debugf("Found region [region: %s]", region.Name)
-			//c.cacheLocation(table, region)
+			// update cache
+			c.cacheLocation(table, region)
 			return region
 		}
 	}
