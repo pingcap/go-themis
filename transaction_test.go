@@ -65,12 +65,33 @@ func (s *TransactionTestSuit) TestTransaction(c *C) {
 	log.Info("return val2:", rVal2)
 	c.Assert(rVal >= 0 && rVal < 10 && rVal == rVal2, Equals, true)
 
-	scanner := tx.GetScanner([]byte("CashTable"), nil, nil)
+	scanner := tx.GetScanner([]byte("CashTable"), []byte("Boa"), nil)
+	cnt := 0
 	for {
 		r := scanner.Next()
 		if r == nil {
 			break
 		}
-		log.Info("!!!!!!" + string(r.Row))
+		cnt += 1
+		log.Info(string(r.Row))
 	}
+	c.Assert(cnt, Equals, 3)
+
+	// delete
+	tx = NewTxn(cli)
+	d := hbase.CreateNewDelete([]byte("Tom"))
+	d.AddColumn([]byte("Account"), []byte("cash"))
+	tx.Delete("CashTable", d)
+	tx.Commit()
+
+	tx = NewTxn(cli)
+	scanner = tx.GetScanner([]byte("CashTable"), nil, nil)
+	for {
+		r := scanner.Next()
+		if r == nil {
+			break
+		}
+		log.Info(string(r.Row))
+	}
+
 }

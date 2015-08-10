@@ -5,7 +5,6 @@ import (
 	"io"
 
 	pb "github.com/golang/protobuf/proto"
-	"github.com/ngaut/log"
 	"github.com/pingcap/go-themis/iohelper"
 )
 
@@ -21,8 +20,6 @@ func processMessage(msg []byte) [][]byte {
 
 		payloads = append(payloads, hbytes)
 	}
-
-	log.Debugf("Messages processed [n=%d]", len(payloads))
 
 	return payloads
 }

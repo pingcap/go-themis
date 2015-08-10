@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"runtime/debug"
 
 	pb "github.com/golang/protobuf/proto"
 	"github.com/pingcap/go-themis/hbase"
@@ -138,6 +139,9 @@ func (t *themisClientImpl) isLockExpired(tbl, row []byte, ts uint64) (bool, erro
 		Timestamp: pb.Uint64(ts),
 	}
 	var res proto.LockExpiredResponse
+	if row == nil {
+		debug.PrintStack()
+	}
 	err := t.call("isLockExpired", tbl, row, req, &res)
 	if err != nil {
 		return false, err

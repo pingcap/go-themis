@@ -72,6 +72,12 @@ func (s *ThemisScanner) Next() *hbase.ResultRow {
 	return r
 }
 
+func (s *ThemisScanner) Closed() bool {
+	return s.scan.closed
+}
+
 func (s *ThemisScanner) Close() {
-	s.scan.Close()
+	if !s.scan.closed {
+		s.scan.Close()
+	}
 }

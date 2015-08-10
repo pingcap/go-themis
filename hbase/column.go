@@ -2,10 +2,10 @@ package hbase
 
 import (
 	"bytes"
-	"fmt"
 	"io"
-	"strings"
+	"log"
 
+	"github.com/cznic/exp/lldb"
 	"github.com/pingcap/go-themis/iohelper"
 )
 
@@ -27,13 +27,20 @@ func (c *Column) Write(w io.Writer) {
 }
 
 func (c *Column) String() string {
-	return fmt.Sprintf("%s:%s", c.Family, c.Qual)
+	b, err := lldb.EncodeScalars(c.Family, c.Qual)
+	if err != nil {
+		log.Fatal(err)
+	}
+	return string(b)
 }
 
 func (c *Column) ParseFromString(s string) {
-	pair := strings.Split(s, ":")
-	c.Family = []byte(pair[0])
-	c.Qual = []byte(pair[1])
+	pairs, err := lldb.DecodeScalars([]byte(s))
+	if err != nil {
+		log.Fatal(err)
+	}
+	c.Family = pairs[0].([]byte)
+	c.Qual = pairs[1].([]byte)
 }
 
 type ColumnCoordinate struct {
@@ -67,17 +74,22 @@ func (c *ColumnCoordinate) Equal(a *ColumnCoordinate) bool {
 }
 
 func (c *ColumnCoordinate) String() string {
-	return fmt.Sprintf("%s:%s:%s:%s", c.Table, c.Row, c.Family, c.Qual)
+	b, err := lldb.EncodeScalars(c.Table, c.Row, c.Family, c.Qual)
+	if err != nil {
+		log.Fatal(err)
+	}
+	return string(b)
 }
 
 func (c *ColumnCoordinate) ParseFromString(s string) {
-	parts := strings.Split(s, ":")
-	if len(parts) == 4 {
-		c.Table = []byte(parts[0])
-		c.Row = []byte(parts[1])
-		c.Family = []byte(parts[2])
-		c.Qual = []byte(parts[3])
+	pairs, err := lldb.DecodeScalars([]byte(s))
+	if err != nil {
+		log.Fatal(err)
 	}
+	c.Table = pairs[0].([]byte)
+	c.Row = pairs[1].([]byte)
+	c.Family = pairs[2].([]byte)
+	c.Qual = pairs[3].([]byte)
 }
 
 func (c *ColumnCoordinate) ParseField(b iohelper.ByteMultiReader) error {

@@ -18,6 +18,9 @@ type ResultRow struct {
 }
 
 func NewResultRow(result *proto.Result) *ResultRow {
+	if len(result.GetCell()) == 0 {
+		return nil
+	}
 	res := &ResultRow{}
 	res.Columns = make(map[string]*Kv)
 	res.SortedColumns = make([]*Kv, 0)
@@ -26,6 +29,7 @@ func NewResultRow(result *proto.Result) *ResultRow {
 		res.Row = cell.GetRow()
 
 		col := &Kv{
+			Row: res.Row,
 			Column: Column{
 				Family: cell.GetFamily(),
 				Qual:   cell.GetQualifier(),
@@ -34,7 +38,7 @@ func NewResultRow(result *proto.Result) *ResultRow {
 			Ts:    cell.GetTimestamp(),
 		}
 
-		colName := col.Column.String()
+		colName := string(col.Column.Family) + ":" + string(col.Column.Qual)
 
 		if v, exists := res.Columns[colName]; exists {
 			// renew the same cf result

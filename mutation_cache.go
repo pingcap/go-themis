@@ -22,6 +22,37 @@ type columnMutation struct {
 	*mutationValuePair
 }
 
+func getEntriesFromDel(p *hbase.Delete) []*columnMutation {
+	var ret []*columnMutation
+	for f, _ := range p.Families {
+		quilifiers := p.FamilyQuals[f]
+		if len(quilifiers) == 0 {
+			mutation := &columnMutation{
+				Column: &hbase.Column{
+					Family: []byte(f),
+				},
+				mutationValuePair: &mutationValuePair{
+					typ: hbase.TypeDelete,
+				},
+			}
+			ret = append(ret, mutation)
+		}
+		for q, _ := range quilifiers {
+			mutation := &columnMutation{
+				Column: &hbase.Column{
+					Family: []byte(f),
+					Qual:   []byte(q),
+				},
+				mutationValuePair: &mutationValuePair{
+					typ: hbase.TypeDelete,
+				},
+			}
+			ret = append(ret, mutation)
+		}
+	}
+	return ret
+}
+
 func getEntriesFromPut(p *hbase.Put) []*columnMutation {
 	var ret []*columnMutation
 	for i, f := range p.Families {

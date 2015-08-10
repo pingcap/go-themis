@@ -66,7 +66,7 @@ func (txn *Txn) Get(tbl string, g *hbase.Get) (*hbase.ResultRow, error) {
 		return nil, err
 	}
 	// contain locks, try to clean and get again
-	if isLockResult(r) {
+	if r != nil && isLockResult(r) {
 		log.Warning("get lock, try to clean and get again")
 		r, err = txn.tryToCleanLockAndGetAgain([]byte(tbl), g, r.SortedColumns)
 		if err != nil {
@@ -78,6 +78,12 @@ func (txn *Txn) Get(tbl string, g *hbase.Get) (*hbase.ResultRow, error) {
 
 func (txn *Txn) Put(tbl string, p *hbase.Put) {
 	for _, e := range getEntriesFromPut(p) {
+		txn.mutationCache.addMutation([]byte(tbl), p.Row, e.Column, e.typ, e.value)
+	}
+}
+
+func (txn *Txn) Delete(tbl string, p *hbase.Delete) {
+	for _, e := range getEntriesFromDel(p) {
 		txn.mutationCache.addMutation([]byte(tbl), p.Row, e.Column, e.typ, e.value)
 	}
 }
@@ -202,6 +208,7 @@ func (txn *Txn) tryToCleanLockAndGetAgain(tbl []byte, g *hbase.Get, lockKvs []*h
 }
 
 func (txn *Txn) tryToCleanLock(lock ThemisLock) error {
+	log.Warn("try to clean lock")
 	expired, err := txn.themisCli.checkAndSetLockIsExpired(lock)
 	if err != nil {
 		return err
@@ -248,6 +255,8 @@ func (txn *Txn) tryToCleanLock(lock ThemisLock) error {
 				}
 			}
 		}
+	} else {
+		log.Warn("lock is not expired")
 	}
 	return nil
 }
@@ -339,4 +348,11 @@ func (txn *Txn) GetScanner(tbl []byte, startKey, endKey []byte) *ThemisScanner {
 		scanner.setStopRow(endKey)
 	}
 	return scanner
+}
+
+func (txn *Txn) Release() {
+	if txn.client != nil {
+		txn.client.Close()
+		txn.client = nil
+	}
 }

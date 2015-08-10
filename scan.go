@@ -129,8 +129,11 @@ func (s *Scan) getData(nextStart []byte) []*hbase.ResultRow {
 
 	if s.id > 0 {
 		req.ScannerId = pb.Uint64(s.id)
-	} else if s.StartRow != nil && s.StopRow != nil {
+	}
+	if s.StartRow != nil {
 		req.Scan.StartRow = s.StartRow
+	}
+	if s.StopRow != nil {
 		req.Scan.StopRow = s.StopRow
 	}
 
@@ -172,7 +175,7 @@ func (s *Scan) processResponse(response pb.Message) []*hbase.ResultRow {
 	if (n == s.numCached) ||
 		len(s.location.EndKey) == 0 ||
 		(s.StopRow != nil && bytes.Compare(s.location.EndKey, s.StopRow) > 0 && n < s.numCached) ||
-		(res.GetMoreResultsInRegion() && n > 0) {
+		res.GetMoreResultsInRegion() {
 		nextRegion = false
 	}
 

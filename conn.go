@@ -6,6 +6,7 @@ import (
 	"net"
 
 	pb "github.com/golang/protobuf/proto"
+	"github.com/ngaut/log"
 	"github.com/pingcap/go-themis/iohelper"
 	"github.com/pingcap/go-themis/proto"
 )
@@ -49,8 +50,8 @@ func (c *connection) init() error {
 	go func() {
 		err := c.processMessages()
 		if err != nil {
-			// TODO: try another elgant error handling
-			panic(err)
+			log.Warn(err)
+			return
 		}
 	}()
 	return nil

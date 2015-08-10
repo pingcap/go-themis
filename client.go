@@ -97,6 +97,13 @@ func NewClient(zkHosts []string, zkRoot string) (*client, error) {
 	return cl, nil
 }
 
+func (c *client) Close() {
+	c.zkClient.Close()
+	for _, conn := range c.cachedConns {
+		conn.conn.Close()
+	}
+}
+
 // init and get root region server addr and master addr
 func (c *client) init() error {
 	zkclient, _, err := zk.Connect(c.zkHosts, time.Second*30)
