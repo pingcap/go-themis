@@ -7,9 +7,9 @@ import (
 	"fmt"
 	"runtime/debug"
 
+	"github.com/c4pt0r/go-hbase"
+	"github.com/c4pt0r/go-hbase/proto"
 	pb "github.com/golang/protobuf/proto"
-	"github.com/pingcap/go-themis/hbase"
-	"github.com/pingcap/go-themis/proto"
 )
 
 type themisClient interface {
@@ -23,14 +23,14 @@ type themisClient interface {
 	prewriteSecondaryRow(tbl, row []byte, mutations []*columnMutation, prewriteTs uint64, secondaryLockBytes []byte) (ThemisLock, error)
 }
 
-func newThemisClient(client hbaseClient) themisClient {
+func newThemisClient(client hbase.HBaseClient) themisClient {
 	return &themisClientImpl{
 		client: client,
 	}
 }
 
 type themisClientImpl struct {
-	client hbaseClient
+	client hbase.HBaseClient
 }
 
 func (t *themisClientImpl) call(methodName string, tbl, row []byte, req pb.Message, resp pb.Message) error {
@@ -63,7 +63,7 @@ func (t *themisClientImpl) checkAndSetLockIsExpired(lock ThemisLock) (bool, erro
 }
 
 func (t *themisClientImpl) themisGet(tbl []byte, g *hbase.Get, startTs uint64, ignoreLock bool) (*hbase.ResultRow, error) {
-	req := &proto.ThemisGetRequest{
+	req := &ThemisGetRequest{
 		Get:        g.ToProto().(*proto.Get),
 		StartTs:    pb.Uint64(startTs),
 		IgnoreLock: pb.Bool(ignoreLock),
@@ -78,7 +78,7 @@ func (t *themisClientImpl) themisGet(tbl []byte, g *hbase.Get, startTs uint64, i
 
 func (t *themisClientImpl) prewriteRow(tbl []byte, row []byte, mutations []*columnMutation, prewriteTs uint64, primaryLockBytes []byte, secondaryLockBytes []byte, primaryOffset int) (ThemisLock, error) {
 	var cells []*proto.Cell
-	request := &proto.ThemisPrewriteRequest{
+	request := &ThemisPrewriteRequest{
 		Row:           row,
 		PrewriteTs:    pb.Uint64(prewriteTs),
 		PrimaryLock:   primaryLockBytes,
@@ -96,7 +96,7 @@ func (t *themisClientImpl) prewriteRow(tbl []byte, row []byte, mutations []*colu
 	}
 	request.Mutations = cells
 
-	var res proto.ThemisPrewriteResponse
+	var res ThemisPrewriteResponse
 	err := t.call("prewriteRow", tbl, row, request, &res)
 	if err != nil {
 		return nil, err
@@ -116,7 +116,7 @@ func (t *themisClientImpl) prewriteRow(tbl []byte, row []byte, mutations []*colu
 	}
 	// if b[0] != 0 means encounter conflict
 	if commitTs != 0 {
-		return nil, fmt.Errorf("write conflict, encounter write with larger timestamp than prewriteTs=%d, commitTs=%d", prewriteTs, commitTs)
+		return nil, fmt.Errorf("write conflict, encounter write with larger timestamp than prewriteTs=%d, commitTs=%d, row=%s", prewriteTs, commitTs, string(row))
 	}
 	l, err := parseLockFromBytes(b[1])
 	if err != nil {
@@ -135,10 +135,10 @@ func (t *themisClientImpl) prewriteRow(tbl []byte, row []byte, mutations []*colu
 }
 
 func (t *themisClientImpl) isLockExpired(tbl, row []byte, ts uint64) (bool, error) {
-	req := &proto.LockExpiredRequest{
+	req := &LockExpiredRequest{
 		Timestamp: pb.Uint64(ts),
 	}
-	var res proto.LockExpiredResponse
+	var res LockExpiredResponse
 	if row == nil {
 		debug.PrintStack()
 	}
@@ -150,13 +150,13 @@ func (t *themisClientImpl) isLockExpired(tbl, row []byte, ts uint64) (bool, erro
 }
 
 func (t *themisClientImpl) getLockAndErase(cc *hbase.ColumnCoordinate, prewriteTs uint64) (ThemisLock, error) {
-	req := &proto.EraseLockRequest{
+	req := &EraseLockRequest{
 		Row:        cc.Row,
 		Family:     cc.Column.Family,
 		Qualifier:  cc.Column.Qual,
 		PrewriteTs: pb.Uint64(prewriteTs),
 	}
-	var res proto.EraseLockResponse
+	var res EraseLockResponse
 	err := t.call("getLockAndErase", cc.Table, cc.Row, req, &res)
 	if err != nil {
 		return nil, err
@@ -166,7 +166,7 @@ func (t *themisClientImpl) getLockAndErase(cc *hbase.ColumnCoordinate, prewriteT
 
 func (t *themisClientImpl) commitRow(tbl, row []byte, mutations []*columnMutation,
 	prewriteTs, commitTs uint64, primaryOffset int) error {
-	req := &proto.ThemisCommitRequest{
+	req := &ThemisCommitRequest{
 		Row:          row,
 		PrewriteTs:   pb.Uint64(prewriteTs),
 		CommitTs:     pb.Uint64(commitTs),
@@ -175,7 +175,7 @@ func (t *themisClientImpl) commitRow(tbl, row []byte, mutations []*columnMutatio
 	for _, m := range mutations {
 		req.Mutations = append(req.Mutations, m.toCell())
 	}
-	var res proto.ThemisCommitResponse
+	var res ThemisCommitResponse
 	err := t.call("commitRow", tbl, row, req, &res)
 	if err != nil {
 		return err

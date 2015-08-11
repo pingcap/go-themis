@@ -5,8 +5,8 @@ import (
 	"encoding/binary"
 	"io"
 
-	"github.com/pingcap/go-themis/hbase"
-	"github.com/pingcap/go-themis/iohelper"
+	"github.com/c4pt0r/go-hbase"
+	"github.com/c4pt0r/go-hbase/iohelper"
 )
 
 var (

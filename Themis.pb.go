@@ -2,9 +2,12 @@
 // source: Themis.proto
 // DO NOT EDIT!
 
-package proto
+package themis
 
-import proto1 "github.com/golang/protobuf/proto"
+import (
+	. "github.com/c4pt0r/go-hbase/proto"
+	proto1 "github.com/golang/protobuf/proto"
+)
 import math "math"
 
 // Reference imports to suppress errors if they are not otherwise used.

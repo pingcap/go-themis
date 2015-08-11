@@ -6,9 +6,9 @@ import (
 
 	"runtime"
 
+	"github.com/c4pt0r/go-hbase"
 	"github.com/ngaut/log"
 	"github.com/pingcap/go-themis"
-	"github.com/pingcap/go-themis/hbase"
 )
 
 func main() {
@@ -19,21 +19,21 @@ func main() {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			c, err := themis.NewClient([]string{"localhost"}, "/hbase")
+			c, err := hbase.NewClient([]string{"localhost"}, "/hbase")
 			if err != nil {
 				return
 			}
 
 			tx := themis.NewTxn(c)
 
-			get := hbase.CreateNewGet([]byte("Joe"))
+			get := hbase.NewGet([]byte("Joe"))
 			get.AddColumn([]byte("Account"), []byte("cash"))
 			tx.Get("CashTable", get)
 
-			put := hbase.CreateNewPut([]byte("Joe"))
+			put := hbase.NewPut([]byte("Joe"))
 			put.AddValue([]byte("Account"), []byte("cash"), []byte(strconv.Itoa(i)))
 
-			put2 := hbase.CreateNewPut([]byte("Bob"))
+			put2 := hbase.NewPut([]byte("Bob"))
 			put2.AddValue([]byte("Account"), []byte("cash"), []byte(strconv.Itoa(i)))
 
 			tx.Put("CashTable", put)

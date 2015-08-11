@@ -3,7 +3,7 @@ package themis
 import (
 	"testing"
 
-	"github.com/pingcap/go-themis/hbase"
+	"github.com/c4pt0r/go-hbase"
 
 	. "gopkg.in/check.v1"
 )

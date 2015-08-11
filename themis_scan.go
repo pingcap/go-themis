@@ -4,22 +4,22 @@ import (
 	"bytes"
 	"encoding/binary"
 
+	"github.com/c4pt0r/go-hbase"
 	"github.com/ngaut/log"
-	"github.com/pingcap/go-themis/hbase"
 )
 
 type ThemisScanner struct {
-	scan *Scan
+	scan *hbase.Scan
 	txn  *Txn
 	tbl  []byte
 }
 
-func newThemisScanner(tbl []byte, txn *Txn, c *client) *ThemisScanner {
-	s := newScan(tbl, c)
+func newThemisScanner(tbl []byte, txn *Txn, c hbase.HBaseClient) *ThemisScanner {
+	s := hbase.NewScan(tbl, c)
 	// add start ts
 	b := bytes.NewBuffer(nil)
 	binary.Write(b, binary.BigEndian, txn.startTs)
-	s.addAttr("_themisTransationStartTs_", b.Bytes())
+	s.AddAttr("_themisTransationStartTs_", b.Bytes())
 	return &ThemisScanner{
 		scan: s,
 		txn:  txn,
@@ -36,17 +36,7 @@ func (s *ThemisScanner) setStopRow(stop []byte) {
 }
 
 func (s *ThemisScanner) createGetFromScan(row []byte) *hbase.Get {
-	g := hbase.CreateNewGet(row)
-	for i, family := range s.scan.families {
-		if len(s.scan.qualifiers[i]) > 0 {
-			for _, qual := range s.scan.qualifiers[i] {
-				g.AddColumn(family, qual)
-			}
-		} else {
-			g.AddFamily(family)
-		}
-	}
-	return g
+	return s.scan.CreateGetFromScan(row)
 }
 
 func (s *ThemisScanner) Next() *hbase.ResultRow {
@@ -63,7 +53,7 @@ func (s *ThemisScanner) Next() *hbase.ResultRow {
 			return nil
 		}
 		// empty result indicates the current row has been erased, we should get next row
-		if len(r.SortedColumns) == 0 {
+		if r == nil {
 			return s.Next()
 		} else {
 			return r
@@ -73,11 +63,11 @@ func (s *ThemisScanner) Next() *hbase.ResultRow {
 }
 
 func (s *ThemisScanner) Closed() bool {
-	return s.scan.closed
+	return s.scan.Closed()
 }
 
 func (s *ThemisScanner) Close() {
-	if !s.scan.closed {
+	if !s.scan.Closed() {
 		s.scan.Close()
 	}
 }

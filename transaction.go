@@ -4,14 +4,14 @@ import (
 	"bytes"
 	"fmt"
 
+	"github.com/c4pt0r/go-hbase"
 	"github.com/ngaut/log"
-	"github.com/pingcap/go-themis/hbase"
 	"github.com/pingcap/go-themis/oracle"
 	"github.com/pingcap/go-themis/oracle/oracles"
 )
 
 type Txn struct {
-	client             *client
+	client             hbase.HBaseClient
 	themisCli          themisClient
 	lockCleaner        lockCleaner
 	oracle             oracle.Oracle
@@ -29,9 +29,9 @@ type Txn struct {
 
 var localOracle = &oracles.LocalOracle{}
 
-func NewTxn(c hbaseClient) *Txn {
+func NewTxn(c hbase.HBaseClient) *Txn {
 	txn := &Txn{
-		client:           c.(*client),
+		client:           c,
 		themisCli:        newThemisClient(c),
 		mutationCache:    newColumnMutationCache(),
 		oracle:           localOracle,
@@ -195,7 +195,6 @@ func (txn *Txn) tryToCleanLockAndGetAgain(tbl []byte, g *hbase.Get, lockKvs []*h
 	for _, lock := range locks {
 		err := txn.tryToCleanLock(lock)
 		if err != nil {
-			log.Error(err)
 			return nil, err
 		}
 	}
@@ -351,8 +350,4 @@ func (txn *Txn) GetScanner(tbl []byte, startKey, endKey []byte) *ThemisScanner {
 }
 
 func (txn *Txn) Release() {
-	if txn.client != nil {
-		txn.client.Close()
-		txn.client = nil
-	}
 }

@@ -5,7 +5,7 @@ import (
 	"encoding/binary"
 	"math"
 
-	"github.com/pingcap/go-themis/hbase"
+	"github.com/c4pt0r/go-hbase"
 	. "gopkg.in/check.v1"
 )
 
@@ -41,7 +41,7 @@ func (s *LockCleanerTestSuit) buildMockHbase() *mockHbaseClient {
 	mockHbase := &mockHbaseClient{}
 
 	// should call these
-	g := hbase.CreateNewGet([]byte("row"))
+	g := hbase.NewGet([]byte("row"))
 	g.AddStringColumn("#p", "cf#q")
 	g.AddStringColumn("#d", "cf#q")
 	// [1024, inf)
@@ -72,7 +72,7 @@ func (s *LockCleanerTestSuit) TestLockCleanerEraseData(c *C) {
 		Qual:   []byte("q"),
 	}
 
-	d := hbase.CreateNewDelete([]byte("row"))
+	d := hbase.NewDelete([]byte("row"))
 	d.AddColumnWithTimestamp([]byte("cf"), []byte("q"), 0)
 	d.AddColumnWithTimestamp([]byte("L"), []byte("cf#q"), 0)
 	mockHbase.On("Delete", "tbl", d).Return(true, nil)

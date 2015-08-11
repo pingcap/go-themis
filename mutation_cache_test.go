@@ -3,8 +3,8 @@ package themis
 import (
 	"bytes"
 
+	"github.com/c4pt0r/go-hbase"
 	"github.com/ngaut/log"
-	"github.com/pingcap/go-themis/hbase"
 	. "gopkg.in/check.v1"
 )
 
@@ -35,7 +35,7 @@ func (s *MutationCacheTestSuit) TestMutationCache(c *C) {
 		log.Info(mutation)
 	}
 
-	p := hbase.CreateNewPut([]byte("row"))
+	p := hbase.NewPut([]byte("row"))
 	p.AddStringValue("cf", "q", "v")
 	p.AddStringValue("cf", "q1", "v")
 	p.AddStringValue("cf", "q2", "v")

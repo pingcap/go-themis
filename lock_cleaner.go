@@ -7,7 +7,7 @@ import (
 	"math"
 	"strings"
 
-	"github.com/pingcap/go-themis/hbase"
+	"github.com/c4pt0r/go-hbase"
 )
 
 type lockCleaner interface {
@@ -19,10 +19,10 @@ var _ lockCleaner = (*lockCleanerImpl)(nil)
 
 type lockCleanerImpl struct {
 	themisCli themisClient
-	hbaseCli  hbaseClient
+	hbaseCli  hbase.HBaseClient
 }
 
-func newLockCleaner(cli themisClient, hbaseCli hbaseClient) lockCleaner {
+func newLockCleaner(cli themisClient, hbaseCli hbase.HBaseClient) lockCleaner {
 	return &lockCleanerImpl{cli, hbaseCli}
 }
 
@@ -78,7 +78,7 @@ func (cleaner *lockCleanerImpl) cleanPrimaryLock(cc *hbase.ColumnCoordinate, pre
 	pl, _ := l.(*PrimaryLock)
 	// if primary lock is nil, means someothers have already committed
 	if pl == nil {
-		g := hbase.CreateNewGet(cc.Row)
+		g := hbase.NewGet(cc.Row)
 		// add put write column
 		qual := string(cc.Family) + "#" + string(cc.Qual)
 		g.AddStringColumn("#p", qual)
@@ -106,7 +106,7 @@ func (cleaner *lockCleanerImpl) cleanPrimaryLock(cc *hbase.ColumnCoordinate, pre
 }
 
 func (cleaner *lockCleanerImpl) eraseLockAndData(tbl []byte, row []byte, cols []hbase.Column, ts uint64) error {
-	d := hbase.CreateNewDelete(row)
+	d := hbase.NewDelete(row)
 	for _, col := range cols {
 		// delete lock
 		d.AddColumnWithTimestamp(LockFamilyName, []byte(string(col.Family)+"#"+string(col.Qual)), ts)
