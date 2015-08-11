@@ -3,6 +3,7 @@ package themis
 import (
 	"bytes"
 	"fmt"
+	"sync"
 
 	"github.com/c4pt0r/go-hbase"
 	"github.com/ngaut/log"
@@ -117,12 +118,14 @@ func (txn *Txn) Commit() error {
 
 func (txn *Txn) commitSecondary() {
 	for _, r := range txn.secondaryRows {
-		err := txn.themisCli.commitSecondaryRow(r.tbl, r.row, r.mutationList(false), txn.startTs, txn.commitTs)
-		if err != nil {
-			// fail of secondary commit will not stop the commits of next
-			// secondaries
-			log.Warning(err)
-		}
+		go func(r *rowMutation) {
+			err := txn.themisCli.commitSecondaryRow(r.tbl, r.row, r.mutationList(false), txn.startTs, txn.commitTs)
+			if err != nil {
+				// fail of secondary commit will not stop the commits of next
+				// secondaries
+				log.Warning(err)
+			}
+		}(r)
 	}
 }
 
@@ -309,14 +312,42 @@ func (txn *Txn) prewritePrimary() error {
 }
 
 func (txn *Txn) prewriteSecondary() error {
-	for i, rowMutation := range txn.secondaryRows {
-		err := txn.prewriteRowWithLockClean(rowMutation.tbl, rowMutation, false)
-		if err != nil {
-			// need rollback
-			log.Warning("prewrite secondary rows encounter error, rolling back, err:", err)
-			txn.rollbackRow(txn.primaryRow.tbl, txn.primaryRow)
-			txn.rollbackSecondaryRow(i)
-			return err
+	wg := sync.WaitGroup{}
+
+	errChan := make(chan error, len(txn.secondaryRows))
+	defer close(errChan)
+	successChan := make(chan *rowMutation, len(txn.secondaryRows))
+	defer close(successChan)
+
+	for i, rm := range txn.secondaryRows {
+		wg.Add(1)
+		go func(i int, mutation *rowMutation) {
+			defer wg.Done()
+			err := txn.prewriteRowWithLockClean(mutation.tbl, mutation, false)
+			if err != nil {
+				// need rollback
+				errChan <- err
+			} else {
+				successChan <- mutation
+			}
+		}(i, rm)
+	}
+	wg.Wait()
+
+	if len(errChan) != 0 {
+		// occur error, clean success prewrite mutations
+		log.Warning("prewrite secondary rows encounter error, rolling back", len(successChan))
+		txn.rollbackRow(txn.primaryRow.tbl, txn.primaryRow)
+	L:
+		for {
+			select {
+			case succMutation := <-successChan:
+				{
+					txn.rollbackRow(succMutation.tbl, succMutation)
+				}
+			default:
+				break L
+			}
 		}
 	}
 	return nil
