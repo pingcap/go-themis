@@ -85,7 +85,7 @@ func (cleaner *lockCleanerImpl) cleanPrimaryLock(cc *hbase.ColumnCoordinate, pre
 		// add del write column
 		g.AddStringColumn("#d", qual)
 		// time range => [ours startTs, +Inf)
-		g.AddTimeRange(prewriteTs, math.MaxUint64)
+		g.AddTimeRange(prewriteTs, math.MaxInt64)
 		r, err := cleaner.hbaseCli.Get(string(cc.Table), g)
 		if err != nil {
 			return 0, nil, err

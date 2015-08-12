@@ -117,8 +117,11 @@ func (txn *Txn) Commit() error {
 }
 
 func (txn *Txn) commitSecondary() {
+	wg := sync.WaitGroup{}
 	for _, r := range txn.secondaryRows {
+		wg.Add(1)
 		go func(r *rowMutation) {
+			defer wg.Done()
 			err := txn.themisCli.commitSecondaryRow(r.tbl, r.row, r.mutationList(false), txn.startTs, txn.commitTs)
 			if err != nil {
 				// fail of secondary commit will not stop the commits of next
@@ -127,6 +130,7 @@ func (txn *Txn) commitSecondary() {
 			}
 		}(r)
 	}
+	wg.Wait()
 }
 
 func (txn *Txn) commitPrimary() error {

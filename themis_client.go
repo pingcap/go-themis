@@ -161,7 +161,11 @@ func (t *themisClientImpl) getLockAndErase(cc *hbase.ColumnCoordinate, prewriteT
 	if err != nil {
 		return nil, err
 	}
-	return parseLockFromBytes(res.GetLock())
+	b := res.GetLock()
+	if len(b) == 0 {
+		return nil, nil
+	}
+	return parseLockFromBytes(b)
 }
 
 func (t *themisClientImpl) commitRow(tbl, row []byte, mutations []*columnMutation,
