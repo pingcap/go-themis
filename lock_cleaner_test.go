@@ -45,7 +45,7 @@ func (s *LockCleanerTestSuit) buildMockHbase() *mockHbaseClient {
 	g.AddStringColumn("#p", "cf#q")
 	g.AddStringColumn("#d", "cf#q")
 	// [1024, inf)
-	g.AddTimeRange(1024, math.MaxUint64)
+	g.AddTimeRange(1024, math.MaxInt64)
 	// target
 	buf := bytes.NewBuffer(nil)
 	binary.Write(buf, binary.BigEndian, uint64(1024))

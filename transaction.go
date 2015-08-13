@@ -11,6 +11,16 @@ import (
 	"github.com/pingcap/go-themis/oracle/oracles"
 )
 
+type TxnConfig struct {
+	ConcurrentPrewriteAndCommit bool
+	brokenCommitTest            bool
+}
+
+var defaultTxnConf = TxnConfig{
+	ConcurrentPrewriteAndCommit: false,
+	brokenCommitTest:            false,
+}
+
 type Txn struct {
 	client             hbase.HBaseClient
 	themisCli          themisClient
@@ -26,6 +36,7 @@ type Txn struct {
 	primaryRowOffset   int
 	singleRowTxn       bool
 	secondaryLockBytes []byte
+	conf               TxnConfig
 }
 
 var localOracle = &oracles.LocalOracle{}
@@ -37,6 +48,7 @@ func NewTxn(c hbase.HBaseClient) *Txn {
 		mutationCache:    newColumnMutationCache(),
 		oracle:           localOracle,
 		primaryRowOffset: -1,
+		conf:             defaultTxnConf,
 	}
 	txn.startTs = txn.oracle.GetTimestamp()
 	txn.lockCleaner = newLockCleaner(txn.themisCli, c)
@@ -59,6 +71,11 @@ func isLockColumn(c *hbase.Column) bool {
 		return true
 	}
 	return false
+}
+
+func (txn *Txn) AddConfig(conf TxnConfig) *Txn {
+	txn.conf = conf
+	return txn
 }
 
 func (txn *Txn) Get(tbl string, g *hbase.Get) (*hbase.ResultRow, error) {
@@ -99,6 +116,7 @@ func (txn *Txn) Commit() error {
 	if err != nil {
 		return err
 	}
+
 	err = txn.prewriteSecondary()
 	if err != nil {
 		return err
@@ -117,6 +135,37 @@ func (txn *Txn) Commit() error {
 }
 
 func (txn *Txn) commitSecondary() {
+	if txn.conf.brokenCommitTest {
+		txn.brokenCommitSecondary()
+		return
+	}
+	if txn.conf.ConcurrentPrewriteAndCommit {
+		txn.commitSecondaryConcurrent()
+	} else {
+		txn.commitSecondarySync()
+	}
+}
+
+func (txn *Txn) commitSecondarySync() {
+	log.Info("commit secondary sync")
+	for _, r := range txn.secondaryRows {
+		err := txn.themisCli.commitSecondaryRow(r.tbl, r.row, r.mutationList(false), txn.startTs, txn.commitTs)
+		if err != nil {
+			// fail of secondary commit will not stop the commits of next
+			// secondaries
+			log.Warning(err)
+		}
+	}
+}
+
+// just for test
+func (txn *Txn) brokenCommitSecondary() {
+	// do nothing
+	log.Warn("Simulating secondary commit failed")
+}
+
+func (txn *Txn) commitSecondaryConcurrent() {
+	log.Info("commit secondary concurrent")
 	wg := sync.WaitGroup{}
 	for _, r := range txn.secondaryRows {
 		wg.Add(1)
@@ -239,6 +288,7 @@ func (txn *Txn) tryToCleanLock(lock ThemisLock) error {
 			cc := hbase.ColumnCoordinate{}
 			cc.ParseFromString(k)
 			if commitTs == 0 {
+				// commitTs == 0, means clean primary lock successfully
 				// expire trx havn't committed yet, we must delete lock and
 				// dirty data
 				err = txn.lockCleaner.eraseLockAndData(cc.Table, cc.Row, []hbase.Column{cc.Column}, pl.getTimestamp())
@@ -316,6 +366,26 @@ func (txn *Txn) prewritePrimary() error {
 }
 
 func (txn *Txn) prewriteSecondary() error {
+	if txn.conf.ConcurrentPrewriteAndCommit {
+		return txn.prewriteSecondaryConcurrent()
+	}
+	return txn.prewriteSecondarySync()
+}
+
+func (txn *Txn) prewriteSecondarySync() error {
+	for i, mu := range txn.secondaryRows {
+		err := txn.prewriteRowWithLockClean(mu.tbl, mu, false)
+		if err != nil {
+			// rollback
+			txn.rollbackRow(txn.primaryRow.tbl, txn.primaryRow)
+			txn.rollbackSecondaryRow(i)
+			return err
+		}
+	}
+	return nil
+}
+
+func (txn *Txn) prewriteSecondaryConcurrent() error {
 	wg := sync.WaitGroup{}
 
 	errChan := make(chan error, len(txn.secondaryRows))
@@ -358,7 +428,12 @@ func (txn *Txn) prewriteSecondary() error {
 }
 
 func (txn *Txn) rollbackRow(tbl []byte, mutation *rowMutation) error {
-	log.Warning("rolling back", tbl, mutation.getColumns())
+	l := fmt.Sprintf("\nrolling back %s {\n", string(tbl))
+	for _, v := range mutation.getColumns() {
+		l += fmt.Sprintf("\t%s:%s\n", string(v.Family), string(v.Qual))
+	}
+	l += "}\n"
+	log.Warn(l)
 	return txn.lockCleaner.eraseLockAndData(tbl, mutation.row, mutation.getColumns(), txn.startTs)
 }
 
@@ -385,4 +460,6 @@ func (txn *Txn) GetScanner(tbl []byte, startKey, endKey []byte) *ThemisScanner {
 }
 
 func (txn *Txn) Release() {
+	txn.primary = nil
+
 }

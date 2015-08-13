@@ -1,0 +1,4 @@
+disable 'themis_test'
+drop 'themis_test'
+create 'themis_test', {NAME=>'cf', METADATA => {'THEMIS_ENABLE', 'true'}} 
+
