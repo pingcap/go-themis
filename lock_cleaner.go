@@ -90,6 +90,10 @@ func (cleaner *lockCleanerImpl) cleanPrimaryLock(cc *hbase.ColumnCoordinate, pre
 		if err != nil {
 			return 0, nil, err
 		}
+		// may delete by other client
+		if r == nil {
+			return 0, nil, nil
+		}
 		for _, kv := range r.SortedColumns {
 			var ts uint64
 			binary.Read(bytes.NewBuffer(kv.Value), binary.BigEndian, &ts)
@@ -101,7 +105,8 @@ func (cleaner *lockCleanerImpl) cleanPrimaryLock(cc *hbase.ColumnCoordinate, pre
 	} else {
 		return 0, pl, nil
 	}
-	panic("should not be here")
+	// commitTs = 0 indicates the conflicted transaction has been erased by other client; otherwise
+	// the conflicted must be committed by other client.
 	return 0, nil, nil
 }
 

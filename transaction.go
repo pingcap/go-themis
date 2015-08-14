@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"github.com/c4pt0r/go-hbase"
+	"github.com/juju/errors"
 	"github.com/ngaut/log"
 	"github.com/pingcap/go-themis/oracle"
 	"github.com/pingcap/go-themis/oracle/oracles"
@@ -14,11 +15,13 @@ import (
 type TxnConfig struct {
 	ConcurrentPrewriteAndCommit bool
 	brokenCommitTest            bool
+	brokenPrewriteSecondaryTest bool
 }
 
 var defaultTxnConf = TxnConfig{
-	ConcurrentPrewriteAndCommit: false,
+	ConcurrentPrewriteAndCommit: true,
 	brokenCommitTest:            false,
+	brokenPrewriteSecondaryTest: false,
 }
 
 type Txn struct {
@@ -95,6 +98,7 @@ func (txn *Txn) Get(tbl string, g *hbase.Get) (*hbase.ResultRow, error) {
 }
 
 func (txn *Txn) Put(tbl string, p *hbase.Put) {
+	// add mutation to buffer
 	for _, e := range getEntriesFromPut(p) {
 		txn.mutationCache.addMutation([]byte(tbl), p.Row, e.Column, e.typ, e.value)
 	}
@@ -108,6 +112,7 @@ func (txn *Txn) Delete(tbl string, p *hbase.Delete) {
 
 func (txn *Txn) Commit() error {
 	if txn.mutationCache.getSize() == 0 {
+		// read-only transaction
 		return nil
 	}
 
@@ -156,12 +161,6 @@ func (txn *Txn) commitSecondarySync() {
 			log.Warning(err)
 		}
 	}
-}
-
-// just for test
-func (txn *Txn) brokenCommitSecondary() {
-	// do nothing
-	log.Warn("Simulating secondary commit failed")
 }
 
 func (txn *Txn) commitSecondaryConcurrent() {
@@ -366,6 +365,9 @@ func (txn *Txn) prewritePrimary() error {
 }
 
 func (txn *Txn) prewriteSecondary() error {
+	if txn.conf.brokenPrewriteSecondaryTest {
+		return txn.brokenPrewriteSecondary()
+	}
 	if txn.conf.ConcurrentPrewriteAndCommit {
 		return txn.prewriteSecondaryConcurrent()
 	}
@@ -381,6 +383,26 @@ func (txn *Txn) prewriteSecondarySync() error {
 			txn.rollbackSecondaryRow(i)
 			return err
 		}
+	}
+	return nil
+}
+
+// just for test
+func (txn *Txn) brokenCommitSecondary() {
+	// do nothing
+	log.Warn("Simulating secondary commit failed")
+}
+
+func (txn *Txn) brokenPrewriteSecondary() error {
+	log.Warn("Simulating prewrite secondary failed")
+	for i, rm := range txn.secondaryRows {
+		if i == len(txn.secondary)-1 {
+			// simulating prewrite failed, need rollback
+			txn.rollbackRow(txn.primaryRow.tbl, txn.primaryRow)
+			txn.rollbackSecondaryRow(i)
+			return errors.New("simulated error")
+		}
+		txn.prewriteRowWithLockClean(rm.tbl, rm, false)
 	}
 	return nil
 }
@@ -461,5 +483,13 @@ func (txn *Txn) GetScanner(tbl []byte, startKey, endKey []byte) *ThemisScanner {
 
 func (txn *Txn) Release() {
 	txn.primary = nil
+	txn.primaryRow = nil
+	txn.secondary = nil
+	txn.secondaryRows = nil
+	txn.startTs = 0
+	txn.commitTs = 0
+}
 
+func (txn *Txn) String() string {
+	return fmt.Sprintf("%d", txn.startTs)
 }

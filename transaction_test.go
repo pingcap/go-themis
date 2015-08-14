@@ -34,17 +34,17 @@ func (s *TransactionTestSuit) TestTransaction(c *C) {
 			tx := NewTxn(s.cli)
 
 			put := hbase.NewPut([]byte("Joe"))
-			put.AddValue([]byte("Account"), []byte("cash"), []byte(strconv.Itoa(i)))
+			put.AddValue([]byte("cf"), []byte("q"), []byte(strconv.Itoa(i)))
 
 			put2 := hbase.NewPut([]byte("Bob"))
-			put2.AddValue([]byte("Account"), []byte("cash"), []byte(strconv.Itoa(i)))
+			put2.AddValue([]byte("cf"), []byte("q"), []byte(strconv.Itoa(i)))
 
 			put3 := hbase.NewPut([]byte("Tom"))
-			put3.AddValue([]byte("Account"), []byte("cash"), []byte(strconv.Itoa(i)))
+			put3.AddValue([]byte("cf"), []byte("q"), []byte(strconv.Itoa(i)))
 
-			tx.Put("CashTable", put)
-			tx.Put("CashTable", put2)
-			tx.Put("CashTable", put3)
+			tx.Put("themis_test", put)
+			tx.Put("themis_test", put2)
+			tx.Put("themis_test", put3)
 
 			tx.Commit()
 		}(i)
@@ -53,23 +53,29 @@ func (s *TransactionTestSuit) TestTransaction(c *C) {
 
 	tx := NewTxn(s.cli)
 	get := hbase.NewGet([]byte("Joe"))
-	get.AddColumn([]byte("Account"), []byte("cash"))
+	get.AddColumn([]byte("cf"), []byte("q"))
 
 	get2 := hbase.NewGet([]byte("Bob"))
-	get2.AddColumn([]byte("Account"), []byte("cash"))
+	get2.AddColumn([]byte("cf"), []byte("q"))
 
-	r, err := tx.Get("CashTable", get)
+	r, err := tx.Get("themis_test", get)
 	c.Assert(err, Equals, nil)
-	r2, err := tx.Get("CashTable", get2)
+	r2, err := tx.Get("themis_test", get2)
 	c.Assert(err, Equals, nil)
 
-	rVal, _ := strconv.Atoi(string(r.SortedColumns[0].Value))
-	rVal2, _ := strconv.Atoi(string(r2.SortedColumns[0].Value))
-	log.Info("return val:", rVal)
-	log.Info("return val2:", rVal2)
-	c.Assert(rVal >= 0 && rVal < 10 && rVal == rVal2, Equals, true)
+	if r != nil && r2 != nil {
+		rVal, _ := strconv.Atoi(string(r.SortedColumns[0].Value))
+		rVal2, _ := strconv.Atoi(string(r2.SortedColumns[0].Value))
+		log.Info("return val:", rVal)
+		log.Info("return val2:", rVal2)
+		c.Assert(rVal >= 0 && rVal < 10 && rVal == rVal2, Equals, true)
+	} else {
+		// maybe both of the transctions are failed
+		c.Assert(r == nil, Equals, true)
+		c.Assert(r2 == nil, Equals, true)
+	}
 
-	scanner := tx.GetScanner([]byte("CashTable"), []byte("Boa"), nil)
+	scanner := tx.GetScanner([]byte("themis_test"), []byte("Boa"), []byte("Tom\xff"))
 	cnt := 0
 	for {
 		r := scanner.Next()
@@ -79,18 +85,27 @@ func (s *TransactionTestSuit) TestTransaction(c *C) {
 		cnt += 1
 		log.Info(string(r.Row))
 	}
+	log.Info(cnt)
 	// may be all trx are failed
-	c.Assert(cnt == 3 || cnt == 2, Equals, true)
+	c.Assert(cnt == 0 || cnt == 3, Equals, true)
 
 	// delete
 	tx = NewTxn(s.cli)
 	d := hbase.NewDelete([]byte("Tom"))
-	d.AddColumn([]byte("Account"), []byte("cash"))
-	tx.Delete("CashTable", d)
+	d.AddColumn([]byte("cf"), []byte("q"))
+	tx.Delete("themis_test", d)
+
+	d = hbase.NewDelete([]byte("Joe"))
+	d.AddColumn([]byte("cf"), []byte("q"))
+	tx.Delete("themis_test", d)
+
+	d = hbase.NewDelete([]byte("Bob"))
+	d.AddColumn([]byte("cf"), []byte("q"))
+	tx.Delete("themis_test", d)
 	tx.Commit()
 
 	tx = NewTxn(s.cli)
-	scanner = tx.GetScanner([]byte("CashTable"), nil, nil)
+	scanner = tx.GetScanner([]byte("themis_test"), nil, nil)
 	for {
 		r := scanner.Next()
 		if r == nil {
@@ -98,6 +113,7 @@ func (s *TransactionTestSuit) TestTransaction(c *C) {
 		}
 		log.Info(string(r.Row))
 	}
+
 }
 
 func (s *TransactionTestSuit) TestAsyncCommit(c *C) {
@@ -171,4 +187,13 @@ func (s *TransactionTestSuit) TestAsyncCommit(c *C) {
 	}
 	c.Assert(err, Equals, nil)
 
+}
+
+func (s *TransactionTestSuit) TestBrokenPrewriteSecondary(c *C) {
+	// TODO: check rallback & cleanup locks
+}
+
+func (s *TransactionTestSuit) TestPrimaryLockTimeout(c *C) {
+	// TODO: check if lock can be cleaned up when secondary prewrite failed and
+	// rollback is also failed
 }

@@ -2,3 +2,7 @@ disable 'themis_test'
 drop 'themis_test'
 create 'themis_test', {NAME=>'cf', METADATA => {'THEMIS_ENABLE', 'true'}} 
 
+disable 'tidbkv'
+drop 'tidbkv'
+create 'tidbkv', {NAME=>'cf', METADATA => {'THEMIS_ENABLE', 'true'}} 
+
