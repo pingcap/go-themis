@@ -191,9 +191,67 @@ func (s *TransactionTestSuit) TestAsyncCommit(c *C) {
 
 func (s *TransactionTestSuit) TestBrokenPrewriteSecondary(c *C) {
 	// TODO: check rallback & cleanup locks
+	conf := TxnConfig{
+		brokenPrewriteSecondaryTest: true,
+	}
+	tx := NewTxn(s.cli).AddConfig(conf)
+	ts := tx.startTs
+	// simulating broken commit
+	for i := 0; i < 10; i++ {
+		p := hbase.NewPut([]byte(fmt.Sprintf("test_%d", i)))
+		p.AddValue([]byte("cf"), []byte("q"), []byte(fmt.Sprintf("%d", ts)))
+		tx.Put("themis_test", p)
+	}
+	err := tx.Commit()
+	c.Assert(err, NotNil)
+	log.Error(err)
+
+	// check if locks are cleaned successfully
+	tx = NewTxn(s.cli)
+	for i := 0; i < 10; i++ {
+		g := hbase.NewGet([]byte(fmt.Sprintf("test_%d", i)))
+		r, err := tx.Get("themis_test", g)
+		c.Assert(err, Equals, nil)
+		c.Assert(string(r.SortedColumns[0].Value) != fmt.Sprintf("%d", ts), Equals, true)
+	}
 }
 
 func (s *TransactionTestSuit) TestPrimaryLockTimeout(c *C) {
 	// TODO: check if lock can be cleaned up when secondary prewrite failed and
 	// rollback is also failed
+	conf := TxnConfig{
+		brokenPrewriteSecondaryTest:            true,
+		brokenPrewriteSecondaryAndRollbackTest: true,
+	}
+	tx := NewTxn(s.cli).AddConfig(conf)
+	ts := tx.startTs
+	// simulating broken commit
+	for i := 0; i < 10; i++ {
+		p := hbase.NewPut([]byte(fmt.Sprintf("test_%d", i)))
+		p.AddValue([]byte("cf"), []byte("q"), []byte(fmt.Sprintf("%d", ts)))
+		tx.Put("themis_test", p)
+	}
+	err := tx.Commit()
+	c.Assert(err, NotNil)
+	log.Error(err)
+
+	//  wait until lock expired.
+	log.Warn("Wait for lock expired. Sleep 30s...")
+	tick := 30
+	for tick > 0 {
+		time.Sleep(1 * time.Second)
+		tick--
+		log.Infof("remain %ds...", tick)
+	}
+
+	// check if locks are cleaned successfully
+	tx = NewTxn(s.cli)
+	for i := 0; i < 10; i++ {
+		g := hbase.NewGet([]byte(fmt.Sprintf("test_%d", i)))
+		r, err := tx.Get("themis_test", g)
+		c.Assert(err, Equals, nil)
+		c.Assert(string(r.SortedColumns[0].Value) != fmt.Sprintf("%d", ts), Equals, true)
+		log.Info(r, err)
+	}
+
 }

@@ -29,7 +29,7 @@ func (s *ParallelTestSuit) TestParallelHbaseCall(c *C) {
 			tx := NewTxn(cli)
 			p := hbase.NewPut([]byte("test"))
 			p.AddValue([]byte("cf"), []byte("q"), []byte(strconv.Itoa(i)))
-			tx.Put("t1", p)
+			tx.Put("themis_test", p)
 			tx.Commit()
 		}(i)
 	}
@@ -37,7 +37,7 @@ func (s *ParallelTestSuit) TestParallelHbaseCall(c *C) {
 
 	g := hbase.NewGet([]byte("test"))
 	g.AddStringColumn("cf", "q")
-	rs, err := cli.Get("t1", g)
+	rs, err := cli.Get("themis_test", g)
 	if err != nil {
 		log.Fatal(err)
 	}

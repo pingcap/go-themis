@@ -13,9 +13,10 @@ import (
 )
 
 type TxnConfig struct {
-	ConcurrentPrewriteAndCommit bool
-	brokenCommitTest            bool
-	brokenPrewriteSecondaryTest bool
+	ConcurrentPrewriteAndCommit            bool
+	brokenCommitTest                       bool
+	brokenPrewriteSecondaryTest            bool
+	brokenPrewriteSecondaryAndRollbackTest bool
 }
 
 var defaultTxnConf = TxnConfig{
@@ -397,9 +398,12 @@ func (txn *Txn) brokenPrewriteSecondary() error {
 	log.Warn("Simulating prewrite secondary failed")
 	for i, rm := range txn.secondaryRows {
 		if i == len(txn.secondary)-1 {
-			// simulating prewrite failed, need rollback
-			txn.rollbackRow(txn.primaryRow.tbl, txn.primaryRow)
-			txn.rollbackSecondaryRow(i)
+			if !txn.conf.brokenPrewriteSecondaryAndRollbackTest {
+				// simulating prewrite failed, need rollback
+				txn.rollbackRow(txn.primaryRow.tbl, txn.primaryRow)
+				txn.rollbackSecondaryRow(i)
+			}
+			// maybe rollback occurs error too
 			return errors.New("simulated error")
 		}
 		txn.prewriteRowWithLockClean(rm.tbl, rm, false)
