@@ -16,7 +16,7 @@ var _ = Suite(&ParallelTestSuit{})
 
 func (s *ParallelTestSuit) TestParallelHbaseCall(c *C) {
 	runtime.GOMAXPROCS(runtime.NumCPU() / 2)
-	cli, err := hbase.NewClient([]string{"localhost"}, "/hbase")
+	cli, err := hbase.NewClient([]string{"zoo"}, "/hbase")
 	if err != nil {
 		return
 	}

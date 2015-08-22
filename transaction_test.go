@@ -19,7 +19,7 @@ var _ = Suite(&TransactionTestSuit{})
 
 func (s *TransactionTestSuit) SetUpSuite(c *C) {
 	var err error
-	s.cli, err = hbase.NewClient([]string{"localhost"}, "/hbase")
+	s.cli, err = hbase.NewClient([]string{"zoo"}, "/hbase")
 	if err != nil {
 		log.Fatal(err)
 	}

@@ -219,6 +219,22 @@ func (_m *mockHbaseClient) Get(tbl string, g *hbase.Get) (*hbase.ResultRow, erro
 
 	return r0, r1
 }
+
+func (_m *mockHbaseClient) CreateTable(t *hbase.TableDescriptor, _ [][]byte) error {
+	return nil
+}
+
+func (_m *mockHbaseClient) DisableTable(t hbase.TableName) error {
+	return nil
+}
+
+func (_m *mockHbaseClient) DropTable(t hbase.TableName) error {
+	return nil
+}
+func (_m *mockHbaseClient) TableExists(t string) bool {
+	return true
+}
+
 func (_m *mockHbaseClient) Put(tbl string, p *hbase.Put) (bool, error) {
 	ret := _m.Called(tbl, p)
 

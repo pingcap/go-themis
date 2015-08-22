@@ -10,6 +10,8 @@ import (
 	"github.com/c4pt0r/go-hbase"
 	"github.com/c4pt0r/go-hbase/proto"
 	pb "github.com/golang/protobuf/proto"
+	"github.com/ngaut/log"
+	"github.com/pingcap/tidb/kv"
 )
 
 type themisClient interface {
@@ -116,7 +118,8 @@ func (t *themisClientImpl) prewriteRow(tbl []byte, row []byte, mutations []*colu
 	}
 	// if b[0] != 0 means encounter conflict
 	if commitTs != 0 {
-		return nil, fmt.Errorf("write conflict, encounter write with larger timestamp than prewriteTs=%d, commitTs=%d, row=%s", prewriteTs, commitTs, string(row))
+		log.Errorf("write conflict, encounter write with larger timestamp than prewriteTs=%d, commitTs=%d, row=%s", prewriteTs, commitTs, string(row))
+		return nil, kv.ErrLockConflict
 	}
 	l, err := parseLockFromBytes(b[1])
 	if err != nil {
