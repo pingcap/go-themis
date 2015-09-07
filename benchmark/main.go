@@ -21,6 +21,7 @@ var c hbase.HBaseClient
 var tblName1 = "themis_1"
 var tblName2 = "themis_2"
 
+// some comments
 func init() {
 	var err error
 	c, err = hbase.NewClient([]string{"localhost"}, "/hbase")
