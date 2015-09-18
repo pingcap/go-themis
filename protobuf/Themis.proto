@@ -14,7 +14,7 @@ message ThemisGetRequest {
   required bool ignoreLock = 3;
 }
 
-message ThemisPrewriteRequest {
+message ThemisPrewrite {
   required bytes row = 1;
   repeated Cell  mutations = 2;
   required uint64 prewriteTs = 3;
@@ -23,20 +23,58 @@ message ThemisPrewriteRequest {
   required int32 primaryIndex = 6;
 }
 
+message ThemisPrewriteRequest {
+  required ThemisPrewrite themisPrewrite = 1;
+}
+
 message ThemisPrewriteResponse {
-  repeated bytes result = 1;
+  optional ThemisPrewriteResult themisPrewriteResult = 1;
+}
+
+message ThemisBatchPrewriteSecondaryRequest {
+  repeated ThemisPrewrite themisPrewrite = 1;
+}
+
+message ThemisBatchPrewriteSecondaryResponse {
+  repeated ThemisPrewriteResult themisPrewriteResult = 1;
+}
+
+message ThemisPrewriteResult {
+	required bytes newerWriteTs = 1;
+	required bytes existLock = 2;
+	required bytes family = 3;
+	required bytes qualifier = 4;
+	required bytes lockExpired = 5;
+	required bytes row = 6;
 }
 
 message ThemisCommitRequest {
+  required ThemisCommit themisCommit = 1;
+}
+
+message ThemisCommitResponse {
+  required bool result = 1;
+}
+
+message ThemisBatchCommitSecondaryRequest {
+  repeated ThemisCommit themisCommit = 1;
+}
+
+message ThemisBatchCommitSecondaryResponse {
+  repeated ThemisBatchCommitSecondaryResult batchCommitSecondaryResult = 1;
+}
+
+message ThemisBatchCommitSecondaryResult {
+	required bytes row = 1;
+	required bool success = 2;
+}
+
+message ThemisCommit { 
   required bytes row = 1;
   repeated Cell  mutations = 2;
   required uint64 prewriteTs = 3;
   required uint64 commitTs = 4;
   required int32 primaryIndex = 5;
-}
-
-message ThemisCommitResponse {
-  required bool result = 1;
 }
 
 message EraseLockRequest {
@@ -63,10 +101,14 @@ service ThemisService {
     returns (Result);
   rpc prewriteRow(ThemisPrewriteRequest)
     returns (ThemisPrewriteResponse);
+  rpc batchPrewriteSecondaryRows(ThemisBatchPrewriteSecondaryRequest)
+    returns (ThemisBatchPrewriteSecondaryResponse);
   rpc prewriteSingleRow(ThemisPrewriteRequest)
     returns (ThemisPrewriteResponse);
   rpc commitRow(ThemisCommitRequest)
     returns (ThemisCommitResponse);
+  rpc batchCommitSecondaryRows(ThemisBatchCommitSecondaryRequest)
+    returns (ThemisBatchCommitSecondaryResponse);
   rpc commitSingleRow(ThemisCommitRequest)
     returns (ThemisCommitResponse);
   rpc getLockAndErase(EraseLockRequest)

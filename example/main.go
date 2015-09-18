@@ -21,7 +21,7 @@ var tblName = "themis_bench"
 
 func init() {
 	var err error
-	c, err = hbase.NewClient([]string{"shenli-pc"}, "/hbase")
+	c, err = hbase.NewClient([]string{"cuiqiu-pc:2222"}, "/hbase")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -67,18 +67,38 @@ func main() {
 			for j := 0; j < 10; j++ {
 				tx := themis.NewTxn(c)
 
-				put := hbase.NewPut([]byte(fmt.Sprintf("Row_%d_%d", i, j)))
+				put := hbase.NewPut([]byte(fmt.Sprintf("1Row_%d_%d", i, j)))
 				put.AddValue([]byte("cf"), []byte("q"), []byte(strconv.Itoa(i)))
 
-				put2 := hbase.NewPut([]byte(fmt.Sprintf("SRow_%d_%d", i, j)))
+				put2 := hbase.NewPut([]byte(fmt.Sprintf("2Row_%d_%d", i, j)))
 				put2.AddValue([]byte("cf"), []byte("q"), []byte(strconv.Itoa(i)))
 
-				put3 := hbase.NewPut([]byte(fmt.Sprintf("LRow_%d_%d", i, j)))
+				put3 := hbase.NewPut([]byte(fmt.Sprintf("3Row_%d_%d", i, j)))
 				put3.AddValue([]byte("cf"), []byte("q"), []byte(strconv.Itoa(i)))
+
+				put4 := hbase.NewPut([]byte(fmt.Sprintf("4Row_%d_%d", i, j)))
+				put4.AddValue([]byte("cf"), []byte("q"), []byte(strconv.Itoa(i)))
+
+				put5 := hbase.NewPut([]byte(fmt.Sprintf("5Row_%d_%d", i, j)))
+				put5.AddValue([]byte("cf"), []byte("q"), []byte(strconv.Itoa(i)))
+
+				put6 := hbase.NewPut([]byte(fmt.Sprintf("6Row_%d_%d", i, j)))
+				put6.AddValue([]byte("cf"), []byte("q"), []byte(strconv.Itoa(i)))
+
+				put7 := hbase.NewPut([]byte(fmt.Sprintf("7Row_%d_%d", i, j)))
+				put7.AddValue([]byte("cf"), []byte("q"), []byte(strconv.Itoa(i)))
+
+				put8 := hbase.NewPut([]byte(fmt.Sprintf("8Row_%d_%d", i, j)))
+				put8.AddValue([]byte("cf"), []byte("q"), []byte(strconv.Itoa(i)))
 
 				tx.Put(tblName, put)
 				tx.Put(tblName, put2)
 				tx.Put(tblName, put3)
+				tx.Put(tblName, put4)
+				tx.Put(tblName, put5)
+				tx.Put(tblName, put6)
+				tx.Put(tblName, put7)
+				tx.Put(tblName, put8)
 
 				err := tx.Commit()
 				if err != nil {

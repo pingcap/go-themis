@@ -18,11 +18,8 @@ type TransactionTestSuit struct {
 var _ = Suite(&TransactionTestSuit{})
 
 func (s *TransactionTestSuit) SetUpSuite(c *C) {
-	var err error
-	s.cli, err = hbase.NewClient([]string{"zoo"}, "/hbase")
-	if err != nil {
-		log.Fatal(err)
-	}
+	s.cli, _ = createHBaseClient()
+	createNewTableAndDropOldTable(s.cli, themisTestTableName, cfName)
 }
 
 func (s *TransactionTestSuit) TestTransaction(c *C) {
@@ -34,17 +31,17 @@ func (s *TransactionTestSuit) TestTransaction(c *C) {
 			tx := NewTxn(s.cli)
 
 			put := hbase.NewPut([]byte("Joe"))
-			put.AddValue([]byte("cf"), []byte("q"), []byte(strconv.Itoa(i)))
+			put.AddValue([]byte(cfName), []byte("q"), []byte(strconv.Itoa(i)))
 
 			put2 := hbase.NewPut([]byte("Bob"))
-			put2.AddValue([]byte("cf"), []byte("q"), []byte(strconv.Itoa(i)))
+			put2.AddValue([]byte(cfName), []byte("q"), []byte(strconv.Itoa(i)))
 
 			put3 := hbase.NewPut([]byte("Tom"))
-			put3.AddValue([]byte("cf"), []byte("q"), []byte(strconv.Itoa(i)))
+			put3.AddValue([]byte(cfName), []byte("q"), []byte(strconv.Itoa(i)))
 
-			tx.Put("themis_test", put)
-			tx.Put("themis_test", put2)
-			tx.Put("themis_test", put3)
+			tx.Put(themisTestTableName, put)
+			tx.Put(themisTestTableName, put2)
+			tx.Put(themisTestTableName, put3)
 
 			tx.Commit()
 		}(i)
@@ -53,14 +50,14 @@ func (s *TransactionTestSuit) TestTransaction(c *C) {
 
 	tx := NewTxn(s.cli)
 	get := hbase.NewGet([]byte("Joe"))
-	get.AddColumn([]byte("cf"), []byte("q"))
+	get.AddColumn([]byte(cfName), []byte("q"))
 
 	get2 := hbase.NewGet([]byte("Bob"))
-	get2.AddColumn([]byte("cf"), []byte("q"))
+	get2.AddColumn([]byte(cfName), []byte("q"))
 
-	r, err := tx.Get("themis_test", get)
+	r, err := tx.Get(themisTestTableName, get)
 	c.Assert(err, Equals, nil)
-	r2, err := tx.Get("themis_test", get2)
+	r2, err := tx.Get(themisTestTableName, get2)
 	c.Assert(err, Equals, nil)
 
 	if r != nil && r2 != nil {
@@ -75,7 +72,7 @@ func (s *TransactionTestSuit) TestTransaction(c *C) {
 		c.Assert(r2 == nil, Equals, true)
 	}
 
-	scanner := tx.GetScanner([]byte("themis_test"), []byte("Boa"), []byte("Tom\xff"))
+	scanner := tx.GetScanner([]byte(themisTestTableName), []byte("Boa"), []byte("Tom\xff"))
 	cnt := 0
 	for {
 		r := scanner.Next()
@@ -92,20 +89,20 @@ func (s *TransactionTestSuit) TestTransaction(c *C) {
 	// delete
 	tx = NewTxn(s.cli)
 	d := hbase.NewDelete([]byte("Tom"))
-	d.AddColumn([]byte("cf"), []byte("q"))
-	tx.Delete("themis_test", d)
+	d.AddColumn([]byte(cfName), []byte("q"))
+	tx.Delete(themisTestTableName, d)
 
 	d = hbase.NewDelete([]byte("Joe"))
-	d.AddColumn([]byte("cf"), []byte("q"))
-	tx.Delete("themis_test", d)
+	d.AddColumn([]byte(cfName), []byte("q"))
+	tx.Delete(themisTestTableName, d)
 
 	d = hbase.NewDelete([]byte("Bob"))
-	d.AddColumn([]byte("cf"), []byte("q"))
-	tx.Delete("themis_test", d)
+	d.AddColumn([]byte(cfName), []byte("q"))
+	tx.Delete(themisTestTableName, d)
 	tx.Commit()
 
 	tx = NewTxn(s.cli)
-	scanner = tx.GetScanner([]byte("themis_test"), nil, nil)
+	scanner = tx.GetScanner([]byte(themisTestTableName), nil, nil)
 	for {
 		r := scanner.Next()
 		if r == nil {
@@ -118,21 +115,21 @@ func (s *TransactionTestSuit) TestTransaction(c *C) {
 
 func (s *TransactionTestSuit) TestAsyncCommit(c *C) {
 	p := hbase.NewPut([]byte("test"))
-	p.AddValue([]byte("cf"), []byte("q"), []byte("val"))
+	p.AddValue([]byte(cfName), []byte("q"), []byte("val"))
 	tx := NewTxn(s.cli)
-	tx.Put("themis_test", p)
+	tx.Put(themisTestTableName, p)
 	tx.Commit()
 
 	tx = NewTxn(s.cli)
 	d := hbase.NewDelete([]byte("test"))
-	d.AddColumn([]byte("cf"), []byte("q"))
-	tx.Delete("themis_test", d)
+	d.AddColumn([]byte(cfName), []byte("q"))
+	tx.Delete(themisTestTableName, d)
 	tx.Commit()
 
 	tx = NewTxn(s.cli)
 	g := hbase.NewGet([]byte("test"))
-	g.AddFamily([]byte("cf"))
-	r, err := tx.Get("themis_test", g)
+	g.AddFamily([]byte(cfName))
+	r, err := tx.Get(themisTestTableName, g)
 	c.Assert(err, Equals, nil)
 	c.Assert(r == nil, Equals, true)
 	tx.Commit()
@@ -146,8 +143,8 @@ func (s *TransactionTestSuit) TestAsyncCommit(c *C) {
 	// simulating broken commit
 	for i := 0; i < 10; i++ {
 		p := hbase.NewPut([]byte(fmt.Sprintf("test_%d", i)))
-		p.AddValue([]byte("cf"), []byte("q"), []byte(fmt.Sprintf("%d", tx.startTs)))
-		tx.Put("themis_test", p)
+		p.AddValue([]byte(cfName), []byte("q"), []byte(fmt.Sprintf("%d", tx.startTs)))
+		tx.Put(themisTestTableName, p)
 	}
 	err = tx.Commit()
 	c.Assert(err, Equals, nil)
@@ -166,8 +163,8 @@ func (s *TransactionTestSuit) TestAsyncCommit(c *C) {
 	tx = NewTxn(s.cli)
 	for i := 0; i < 5; i++ {
 		p := hbase.NewPut([]byte(fmt.Sprintf("test_%d", i)))
-		p.AddValue([]byte("cf"), []byte("q"), []byte(fmt.Sprintf("%d", tx.startTs)))
-		tx.Put("themis_test", p)
+		p.AddValue([]byte(cfName), []byte("q"), []byte(fmt.Sprintf("%d", tx.startTs)))
+		tx.Put(themisTestTableName, p)
 	}
 	err = tx.Commit()
 	if err != nil {
@@ -178,8 +175,8 @@ func (s *TransactionTestSuit) TestAsyncCommit(c *C) {
 	tx = NewTxn(s.cli)
 	for i := 5; i < 10; i++ {
 		p := hbase.NewPut([]byte(fmt.Sprintf("test_%d", i)))
-		p.AddValue([]byte("cf"), []byte("q"), []byte(fmt.Sprintf("%d", tx.startTs)))
-		tx.Put("themis_test", p)
+		p.AddValue([]byte(cfName), []byte("q"), []byte(fmt.Sprintf("%d", tx.startTs)))
+		tx.Put(themisTestTableName, p)
 	}
 	err = tx.Commit()
 	if err != nil {
@@ -199,8 +196,8 @@ func (s *TransactionTestSuit) TestBrokenPrewriteSecondary(c *C) {
 	// simulating broken commit
 	for i := 0; i < 10; i++ {
 		p := hbase.NewPut([]byte(fmt.Sprintf("test_%d", i)))
-		p.AddValue([]byte("cf"), []byte("q"), []byte(fmt.Sprintf("%d", ts)))
-		tx.Put("themis_test", p)
+		p.AddValue([]byte(cfName), []byte("q"), []byte(fmt.Sprintf("%d", ts)))
+		tx.Put(themisTestTableName, p)
 	}
 	err := tx.Commit()
 	c.Assert(err, NotNil)
@@ -210,7 +207,7 @@ func (s *TransactionTestSuit) TestBrokenPrewriteSecondary(c *C) {
 	tx = NewTxn(s.cli)
 	for i := 0; i < 10; i++ {
 		g := hbase.NewGet([]byte(fmt.Sprintf("test_%d", i)))
-		r, err := tx.Get("themis_test", g)
+		r, err := tx.Get(themisTestTableName, g)
 		c.Assert(err, Equals, nil)
 		c.Assert(string(r.SortedColumns[0].Value) != fmt.Sprintf("%d", ts), Equals, true)
 	}
@@ -228,8 +225,8 @@ func (s *TransactionTestSuit) TestPrimaryLockTimeout(c *C) {
 	// simulating broken commit
 	for i := 0; i < 10; i++ {
 		p := hbase.NewPut([]byte(fmt.Sprintf("test_%d", i)))
-		p.AddValue([]byte("cf"), []byte("q"), []byte(fmt.Sprintf("%d", ts)))
-		tx.Put("themis_test", p)
+		p.AddValue([]byte(cfName), []byte("q"), []byte(fmt.Sprintf("%d", ts)))
+		tx.Put(themisTestTableName, p)
 	}
 	err := tx.Commit()
 	c.Assert(err, NotNil)
@@ -248,7 +245,7 @@ func (s *TransactionTestSuit) TestPrimaryLockTimeout(c *C) {
 	tx = NewTxn(s.cli)
 	for i := 0; i < 10; i++ {
 		g := hbase.NewGet([]byte(fmt.Sprintf("test_%d", i)))
-		r, err := tx.Get("themis_test", g)
+		r, err := tx.Get(themisTestTableName, g)
 		c.Assert(err, Equals, nil)
 		c.Assert(string(r.SortedColumns[0].Value) != fmt.Sprintf("%d", ts), Equals, true)
 		log.Info(r, err)

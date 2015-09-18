@@ -194,6 +194,42 @@ func (_m *mockThemisClient) prewriteSecondaryRow(tbl []byte, row []byte, mutatio
 	return r0, r1
 }
 
+func (_m *mockThemisClient) batchPrewriteSecondaryRows(tbl []byte, rowM map[string]*rowMutation,
+		prewriteTs uint64, secondaryLockBytes []byte) (map[string]ThemisLock, error) {
+	ret := _m.Called(tbl, rowM, prewriteTs, secondaryLockBytes)
+	println(ret)
+
+	//var r0 ThemisLock
+//	if rf, ok := ret.Get(0).(func([]byte, []byte, []*columnMutation, uint64, []byte) ThemisLock); ok {
+//		r0 = rf(tbl, row, mutations, prewriteTs, secondaryLockBytes)
+//	} else {
+//		r0 = ret.Get(0).(ThemisLock)
+//	}
+//
+	//var r1 error
+//	if rf, ok := ret.Get(1).(func([]byte, []byte, []*columnMutation, uint64, []byte) error); ok {
+//		r1 = rf(tbl, row, mutations, prewriteTs, secondaryLockBytes)
+//	} else {
+//		r1 = ret.Error(1)
+//	}
+
+	return nil, nil
+}
+
+func (_m *mockThemisClient) batchCommitSecondaryRows(tbl []byte, rowM map[string]*rowMutation, prewriteTs, commitTs uint64) error {
+	ret := _m.Called(tbl, rowM, prewriteTs, commitTs)
+	println(ret)
+
+	//var r0 error
+//	if rf, ok := ret.Get(0).(func([]byte, []byte, []*columnMutation, uint64, uint64) error); ok {
+//		r0 = rf(tbl, row, mutations, prewriteTs, commitTs)
+//	} else {
+//		r0 = ret.Error(0)
+//	}
+
+	return nil
+}
+
 type mockHbaseClient struct {
 	mock.Mock
 }
@@ -293,4 +329,10 @@ func (_m *mockHbaseClient) ServiceCall(table string, call *hbase.CoprocessorServ
 	}
 
 	return r0, r1
+}
+
+func (_m *mockHbaseClient) LocateRegion(table, row []byte, useCache bool) *hbase.RegionInfo {
+	return &hbase.RegionInfo{
+
+	}
 }
