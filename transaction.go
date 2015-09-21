@@ -170,17 +170,6 @@ func (txn *Txn) batchCommitSecondary() {
 	//will batch commit all rows in a region
 	rsRowMap := txn.groupByRegion()
 
-	log.Info("len(txn.secondaryRows) : " +string(len(txn.secondaryRows)))
-	for key,val := range rsRowMap {
-		log.Info("key:"+key)
-		for row, rowM := range val {
-			log.Info("--row:"+row)
-			log.Info(fmt.Sprintf("--rowSize:%d", rowM.getSize()))
-		}
-		log.Info("--------")
-	}
-
-
 	wg := sync.WaitGroup{}
 	for _, regionRowMap := range rsRowMap {
 		wg.Add(1)
