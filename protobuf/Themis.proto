@@ -37,6 +37,7 @@ message ThemisBatchPrewriteSecondaryRequest {
 
 message ThemisBatchPrewriteSecondaryResponse {
   repeated ThemisPrewriteResult themisPrewriteResult = 1;
+  repeated bytes rowsNotInRegion = 2;
 }
 
 message ThemisPrewriteResult {

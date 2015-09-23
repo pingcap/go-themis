@@ -30,12 +30,11 @@ It has these top-level messages:
 package themis
 
 import (
+	"fmt"
 	. "github.com/c4pt0r/go-hbase/proto"
 	proto1 "github.com/golang/protobuf/proto"
 	"math"
-	"fmt"
 )
-
 
 // Reference imports to suppress errors if they are not otherwise used.
 var _ = proto1.Marshal
@@ -43,10 +42,10 @@ var _ = fmt.Errorf
 var _ = math.Inf
 
 type ThemisGetRequest struct {
-	Get              *Get `protobuf:"bytes,1,req,name=get" json:"get,omitempty"`
-	StartTs          *uint64     `protobuf:"varint,2,req,name=startTs" json:"startTs,omitempty"`
-	IgnoreLock       *bool       `protobuf:"varint,3,req,name=ignoreLock" json:"ignoreLock,omitempty"`
-	XXX_unrecognized []byte      `json:"-"`
+	Get              *Get    `protobuf:"bytes,1,req,name=get" json:"get,omitempty"`
+	StartTs          *uint64 `protobuf:"varint,2,req,name=startTs" json:"startTs,omitempty"`
+	IgnoreLock       *bool   `protobuf:"varint,3,req,name=ignoreLock" json:"ignoreLock,omitempty"`
+	XXX_unrecognized []byte  `json:"-"`
 }
 
 func (m *ThemisGetRequest) Reset()         { *m = ThemisGetRequest{} }
@@ -75,13 +74,13 @@ func (m *ThemisGetRequest) GetIgnoreLock() bool {
 }
 
 type ThemisPrewrite struct {
-	Row              []byte         `protobuf:"bytes,1,req,name=row" json:"row,omitempty"`
+	Row              []byte  `protobuf:"bytes,1,req,name=row" json:"row,omitempty"`
 	Mutations        []*Cell `protobuf:"bytes,2,rep,name=mutations" json:"mutations,omitempty"`
-	PrewriteTs       *uint64        `protobuf:"varint,3,req,name=prewriteTs" json:"prewriteTs,omitempty"`
-	SecondaryLock    []byte         `protobuf:"bytes,4,req,name=secondaryLock" json:"secondaryLock,omitempty"`
-	PrimaryLock      []byte         `protobuf:"bytes,5,req,name=primaryLock" json:"primaryLock,omitempty"`
-	PrimaryIndex     *int32         `protobuf:"varint,6,req,name=primaryIndex" json:"primaryIndex,omitempty"`
-	XXX_unrecognized []byte         `json:"-"`
+	PrewriteTs       *uint64 `protobuf:"varint,3,req,name=prewriteTs" json:"prewriteTs,omitempty"`
+	SecondaryLock    []byte  `protobuf:"bytes,4,req,name=secondaryLock" json:"secondaryLock,omitempty"`
+	PrimaryLock      []byte  `protobuf:"bytes,5,req,name=primaryLock" json:"primaryLock,omitempty"`
+	PrimaryIndex     *int32  `protobuf:"varint,6,req,name=primaryIndex" json:"primaryIndex,omitempty"`
+	XXX_unrecognized []byte  `json:"-"`
 }
 
 func (m *ThemisPrewrite) Reset()         { *m = ThemisPrewrite{} }
@@ -180,6 +179,7 @@ func (m *ThemisBatchPrewriteSecondaryRequest) GetThemisPrewrite() []*ThemisPrewr
 
 type ThemisBatchPrewriteSecondaryResponse struct {
 	ThemisPrewriteResult []*ThemisPrewriteResult `protobuf:"bytes,1,rep,name=themisPrewriteResult" json:"themisPrewriteResult,omitempty"`
+	RowsNotInRegion      [][]byte                `protobuf:"bytes,2,rep,name=rowsNotInRegion" json:"rowsNotInRegion,omitempty"`
 	XXX_unrecognized     []byte                  `json:"-"`
 }
 
@@ -190,6 +190,13 @@ func (*ThemisBatchPrewriteSecondaryResponse) ProtoMessage()    {}
 func (m *ThemisBatchPrewriteSecondaryResponse) GetThemisPrewriteResult() []*ThemisPrewriteResult {
 	if m != nil {
 		return m.ThemisPrewriteResult
+	}
+	return nil
+}
+
+func (m *ThemisBatchPrewriteSecondaryResponse) GetRowsNotInRegion() [][]byte {
+	if m != nil {
+		return m.RowsNotInRegion
 	}
 	return nil
 }
@@ -339,12 +346,12 @@ func (m *ThemisBatchCommitSecondaryResult) GetSuccess() bool {
 }
 
 type ThemisCommit struct {
-	Row              []byte         `protobuf:"bytes,1,req,name=row" json:"row,omitempty"`
+	Row              []byte  `protobuf:"bytes,1,req,name=row" json:"row,omitempty"`
 	Mutations        []*Cell `protobuf:"bytes,2,rep,name=mutations" json:"mutations,omitempty"`
-	PrewriteTs       *uint64        `protobuf:"varint,3,req,name=prewriteTs" json:"prewriteTs,omitempty"`
-	CommitTs         *uint64        `protobuf:"varint,4,req,name=commitTs" json:"commitTs,omitempty"`
-	PrimaryIndex     *int32         `protobuf:"varint,5,req,name=primaryIndex" json:"primaryIndex,omitempty"`
-	XXX_unrecognized []byte         `json:"-"`
+	PrewriteTs       *uint64 `protobuf:"varint,3,req,name=prewriteTs" json:"prewriteTs,omitempty"`
+	CommitTs         *uint64 `protobuf:"varint,4,req,name=commitTs" json:"commitTs,omitempty"`
+	PrimaryIndex     *int32  `protobuf:"varint,5,req,name=primaryIndex" json:"primaryIndex,omitempty"`
+	XXX_unrecognized []byte  `json:"-"`
 }
 
 func (m *ThemisCommit) Reset()         { *m = ThemisCommit{} }

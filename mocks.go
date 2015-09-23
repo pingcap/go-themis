@@ -195,39 +195,37 @@ func (_m *mockThemisClient) prewriteSecondaryRow(tbl []byte, row []byte, mutatio
 }
 
 func (_m *mockThemisClient) batchPrewriteSecondaryRows(tbl []byte, rowM map[string]*rowMutation,
-		prewriteTs uint64, secondaryLockBytes []byte) (map[string]ThemisLock, error) {
+	prewriteTs uint64, secondaryLockBytes []byte) (map[string]ThemisLock, error) {
 	ret := _m.Called(tbl, rowM, prewriteTs, secondaryLockBytes)
-	println(ret)
 
-	//var r0 ThemisLock
-//	if rf, ok := ret.Get(0).(func([]byte, []byte, []*columnMutation, uint64, []byte) ThemisLock); ok {
-//		r0 = rf(tbl, row, mutations, prewriteTs, secondaryLockBytes)
-//	} else {
-//		r0 = ret.Get(0).(ThemisLock)
-//	}
-//
-	//var r1 error
-//	if rf, ok := ret.Get(1).(func([]byte, []byte, []*columnMutation, uint64, []byte) error); ok {
-//		r1 = rf(tbl, row, mutations, prewriteTs, secondaryLockBytes)
-//	} else {
-//		r1 = ret.Error(1)
-//	}
+	var r0 map[string]ThemisLock
+	if rf, ok := ret.Get(0).(func([]byte, map[string]*rowMutation, uint64, []byte) map[string]ThemisLock); ok {
+		r0 = rf(tbl, rowM, prewriteTs, secondaryLockBytes)
+	} else {
+		r0 = ret.Get(0).(map[string]ThemisLock)
+	}
 
-	return nil, nil
+	var r1 error
+	if rf, ok := ret.Get(1).(func([]byte, map[string]*rowMutation, uint64, []byte) error); ok {
+		r1 = rf(tbl, rowM, prewriteTs, secondaryLockBytes)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
 }
 
 func (_m *mockThemisClient) batchCommitSecondaryRows(tbl []byte, rowM map[string]*rowMutation, prewriteTs, commitTs uint64) error {
 	ret := _m.Called(tbl, rowM, prewriteTs, commitTs)
-	println(ret)
 
-	//var r0 error
-//	if rf, ok := ret.Get(0).(func([]byte, []byte, []*columnMutation, uint64, uint64) error); ok {
-//		r0 = rf(tbl, row, mutations, prewriteTs, commitTs)
-//	} else {
-//		r0 = ret.Error(0)
-//	}
+	var r0 error
+	if rf, ok := ret.Get(0).(func([]byte, map[string]*rowMutation, uint64, uint64) error); ok {
+		r0 = rf(tbl, rowM, prewriteTs, commitTs)
+	} else {
+		r0 = ret.Error(0)
+	}
 
-	return nil
+	return r0
 }
 
 type mockHbaseClient struct {
@@ -332,7 +330,14 @@ func (_m *mockHbaseClient) ServiceCall(table string, call *hbase.CoprocessorServ
 }
 
 func (_m *mockHbaseClient) LocateRegion(table, row []byte, useCache bool) *hbase.RegionInfo {
-	return &hbase.RegionInfo{
+	ret := _m.Called(table, row, useCache)
 
+	var r0 *hbase.RegionInfo
+	if rf, ok := ret.Get(0).(func([]byte, []byte, bool) *hbase.RegionInfo); ok {
+		r0 = rf(table, row, useCache)
+	} else {
+		r0 = ret.Get(0).(*hbase.RegionInfo)
 	}
+
+	return r0
 }

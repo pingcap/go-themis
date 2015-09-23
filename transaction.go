@@ -352,7 +352,7 @@ func (txn *Txn) batchPrewriteSecondaryRowsWithLockClean(tbl []byte, rowMs map[st
 			}
 
 			//TODO: check lock expire
-			lock, err2 := txn.prewriteRow(tbl, rowMs[row], false);
+			lock, err2 := txn.prewriteRow(tbl, rowMs[row], false)
 			if err2 != nil {
 				return err2
 			}
@@ -466,7 +466,7 @@ func (txn *Txn) batchPrewriteSecondaries() error {
 	wg := sync.WaitGroup{}
 
 	//will batch prewrite all rows in a region
-	rsRowMap := txn.groupByRegion();
+	rsRowMap := txn.groupByRegion()
 
 	log.Info("batchPrewriteSecondaries ")
 	errChan := make(chan error, len(rsRowMap))
@@ -523,7 +523,7 @@ func getFirstEntity(rowMap map[string]*rowMutation) (string, *rowMutation) {
 }
 
 func getBatchGroupKey(rInfo *hbase.RegionInfo, tblName string) string {
-	return rInfo.Server+"_"+rInfo.Name
+	return rInfo.Server + "_" + rInfo.Name
 }
 
 func (txn *Txn) rollbackRow(tbl []byte, mutation *rowMutation) error {

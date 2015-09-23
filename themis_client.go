@@ -5,12 +5,12 @@ import (
 	"fmt"
 	"runtime/debug"
 
+	"encoding/binary"
 	"github.com/c4pt0r/go-hbase"
 	"github.com/c4pt0r/go-hbase/proto"
 	pb "github.com/golang/protobuf/proto"
 	"github.com/ngaut/log"
 	"github.com/pingcap/tidb/kv"
-	"encoding/binary"
 )
 
 type themisClient interface {
@@ -79,7 +79,6 @@ func (t *themisClientImpl) themisGet(tbl []byte, g *hbase.Get, startTs uint64, i
 	return hbase.NewResultRow(&resp), nil
 }
 
-
 func (t *themisClientImpl) prewriteRow(tbl []byte, row []byte, mutations []*columnMutation, prewriteTs uint64, primaryLockBytes []byte, secondaryLockBytes []byte, primaryOffset int) (ThemisLock, error) {
 	var cells []*proto.Cell
 	request := &ThemisPrewriteRequest{}
@@ -114,7 +113,7 @@ func (t *themisClientImpl) prewriteRow(tbl []byte, row []byte, mutations []*colu
 	}
 	// Oops, someone else have already locked this row.
 
-	commitTs :=  binary.BigEndian.Uint64(b.NewerWriteTs)
+	commitTs := binary.BigEndian.Uint64(b.NewerWriteTs)
 	if commitTs != 0 {
 		log.Errorf("write conflict, encounter write with larger timestamp than prewriteTs=%d, commitTs=%d, row=%s", prewriteTs, commitTs, string(row))
 		return nil, kv.ErrLockConflict
@@ -208,9 +207,9 @@ func (t *themisClientImpl) batchCommitSecondaryRows(tbl []byte, rowMs map[string
 			cells = append(cells, toCellFromRowM(col, m))
 		}
 
-		req.ThemisCommit[i] = &ThemisCommit {
+		req.ThemisCommit[i] = &ThemisCommit{
 			Row:          []byte(row),
-			Mutations:	  cells,
+			Mutations:    cells,
 			PrewriteTs:   pb.Uint64(prewriteTs),
 			CommitTs:     pb.Uint64(commitTs),
 			PrimaryIndex: pb.Int(-1),
@@ -227,11 +226,11 @@ func (t *themisClientImpl) batchCommitSecondaryRows(tbl []byte, rowMs map[string
 
 	cResult := res.BatchCommitSecondaryResult
 	if cResult != nil && len(cResult) > 0 {
-		errorInfo := "commit failed, tbl:"+string(tbl)
+		errorInfo := "commit failed, tbl:" + string(tbl)
 		for _, r := range cResult {
 			errorInfo += (" row:" + string(r.Row))
 		}
-		return errors.New(errorInfo+", commitTs"+string(commitTs))
+		return errors.New(fmt.Sprintf("%s, commitTs:%d", errorInfo, commitTs))
 	}
 	return nil
 }
@@ -261,9 +260,9 @@ func (t *themisClientImpl) batchPrewriteSecondaryRows(tbl []byte, rowMs map[stri
 		for col, m := range rowM.mutations {
 			cells = append(cells, toCellFromRowM(col, m))
 		}
-		request.ThemisPrewrite[i] = &ThemisPrewrite {
+		request.ThemisPrewrite[i] = &ThemisPrewrite{
 			Row:           []byte(row),
-			Mutations:	   cells,
+			Mutations:     cells,
 			PrewriteTs:    pb.Uint64(prewriteTs),
 			PrimaryLock:   []byte(""),
 			SecondaryLock: secondaryLockBytes,
@@ -273,28 +272,39 @@ func (t *themisClientImpl) batchPrewriteSecondaryRows(tbl []byte, rowMs map[stri
 		lastRow = []byte(row)
 	}
 
-
 	var res ThemisBatchPrewriteSecondaryResponse
-	//TODO: need test : part fail
 	err := t.call("batchPrewriteSecondaryRows", tbl, lastRow, request, &res)
 	if err != nil {
 		return nil, err
 	}
-	b := res.ThemisPrewriteResult
-	if b == nil || len(b) == 0 {
-		// if lock is empty, means we got the lock, otherwise some one else had
-		// locked this row, and the lock should return in rpc result
-		return nil, nil
+
+	//Perhaps, part row has not in a region, sample : when region split, then need try
+	lockMap := make(map[string]ThemisLock)
+	if res.RowsNotInRegion != nil && len(res.RowsNotInRegion) > 0 {
+		for _, r := range res.RowsNotInRegion {
+			tl, err := t.prewriteSecondaryRow(tbl, r, rowMs[string(r)].mutationList(true), prewriteTs, secondaryLockBytes)
+			if err != nil {
+				return nil, err
+			}
+
+			if tl != nil {
+				lockMap[string(r)] = tl
+			}
+		}
 	}
 
-	lockMap := make(map[string]ThemisLock)
-	for _, pResult := range b {
-		lock, err := judgePerwriteResultRow(pResult, tbl, prewriteTs, pResult.Row)
-		if err != nil {
-			return nil, err
-		}
+	b := res.ThemisPrewriteResult
+	if b != nil && len(b) > 0 {
+		for _, pResult := range b {
+			lock, err := judgePerwriteResultRow(pResult, tbl, prewriteTs, pResult.Row)
+			if err != nil {
+				return nil, err
+			}
 
-		lockMap[string(pResult.Row)] = lock
+			if lock != nil {
+				lockMap[string(pResult.Row)] = lock
+			}
+		}
 	}
 
 	return lockMap, nil
