@@ -136,6 +136,7 @@ func (txn *Txn) Commit() error {
 		txn.rollbackSecondaryRow(len(txn.secondaryRows) - 1)
 		return err
 	}
+
 	txn.commitSecondary()
 	return nil
 }
@@ -146,7 +147,7 @@ func (txn *Txn) commitSecondary() {
 		return
 	}
 	if txn.conf.ConcurrentPrewriteAndCommit {
-		txn.commitSecondaryConcurrent()
+		txn.batchCommitSecondary()
 	} else {
 		txn.commitSecondarySync()
 	}
@@ -164,22 +165,40 @@ func (txn *Txn) commitSecondarySync() {
 	}
 }
 
-func (txn *Txn) commitSecondaryConcurrent() {
-	log.Info("commit secondary concurrent")
+func (txn *Txn) batchCommitSecondary() {
+	log.Info("batch commit secondary")
+	//will batch commit all rows in a region
+	rsRowMap := txn.groupByRegion()
+
 	wg := sync.WaitGroup{}
-	for _, r := range txn.secondaryRows {
+	for _, regionRowMap := range rsRowMap {
 		wg.Add(1)
-		go func(r *rowMutation) {
+		_, firstRowM := getFirstEntity(regionRowMap)
+		go func(tbl []byte, rMap map[string]*rowMutation) {
 			defer wg.Done()
-			err := txn.themisCli.commitSecondaryRow(r.tbl, r.row, r.mutationList(false), txn.startTs, txn.commitTs)
+			err := txn.themisCli.batchCommitSecondaryRows(tbl, rMap, txn.startTs, txn.commitTs)
 			if err != nil {
 				// fail of secondary commit will not stop the commits of next
 				// secondaries
 				log.Warning(err)
 			}
-		}(r)
+		}(firstRowM.tbl, regionRowMap)
 	}
+
 	wg.Wait()
+}
+
+func (txn *Txn) groupByRegion() map[string]map[string]*rowMutation {
+	rsRowMap := make(map[string]map[string]*rowMutation)
+	for _, rm := range txn.secondaryRows {
+		key := getBatchGroupKey(txn.client.LocateRegion(rm.tbl, rm.row, true), string(rm.tbl))
+		if _, exists := rsRowMap[key]; !exists {
+			rsRowMap[key] = map[string]*rowMutation{}
+		}
+		rsRowMap[key][string(rm.row)] = rm
+	}
+
+	return rsRowMap
 }
 
 func (txn *Txn) commitPrimary() error {
@@ -317,6 +336,34 @@ func (txn *Txn) tryToCleanLock(lock ThemisLock) error {
 	return nil
 }
 
+func (txn *Txn) batchPrewriteSecondaryRowsWithLockClean(tbl []byte, rowMs map[string]*rowMutation) error {
+	locks, err := txn.batchPrewriteSecondaryRows(tbl, rowMs)
+	if err != nil {
+		return err
+	}
+
+	// lock clean
+	if locks != nil && len(locks) > 0 {
+		// try one more time after clean lock successfully
+		for row, lock := range locks {
+			err = txn.tryToCleanLock(lock)
+			if err != nil {
+				return err
+			}
+
+			//TODO: check lock expire
+			lock, err2 := txn.prewriteRow(tbl, rowMs[row], false)
+			if err2 != nil {
+				return err2
+			}
+			if lock != nil {
+				return fmt.Errorf("can't clean lock, column:%+v; conflict lock: %+v, lock ts: %d", lock.getColumn(), lock, lock.getTimestamp())
+			}
+		}
+	}
+	return nil
+}
+
 func (txn *Txn) prewriteRowWithLockClean(tbl []byte, mutation *rowMutation, containPrimary bool) error {
 	lock, err := txn.prewriteRow(tbl, mutation, containPrimary)
 	if err != nil {
@@ -338,6 +385,10 @@ func (txn *Txn) prewriteRowWithLockClean(tbl []byte, mutation *rowMutation, cont
 		}
 	}
 	return nil
+}
+
+func (txn *Txn) batchPrewriteSecondaryRows(tbl []byte, rowMs map[string]*rowMutation) (map[string]ThemisLock, error) {
+	return txn.themisCli.batchPrewriteSecondaryRows(tbl, rowMs, txn.startTs, txn.secondaryLockBytes)
 }
 
 func (txn *Txn) prewriteRow(tbl []byte, mutation *rowMutation, containPrimary bool) (ThemisLock, error) {
@@ -370,7 +421,7 @@ func (txn *Txn) prewriteSecondary() error {
 		return txn.brokenPrewriteSecondary()
 	}
 	if txn.conf.ConcurrentPrewriteAndCommit {
-		return txn.prewriteSecondaryConcurrent()
+		return txn.batchPrewriteSecondaries()
 	}
 	return txn.prewriteSecondarySync()
 }
@@ -411,39 +462,45 @@ func (txn *Txn) brokenPrewriteSecondary() error {
 	return nil
 }
 
-func (txn *Txn) prewriteSecondaryConcurrent() error {
+func (txn *Txn) batchPrewriteSecondaries() error {
 	wg := sync.WaitGroup{}
 
-	errChan := make(chan error, len(txn.secondaryRows))
+	//will batch prewrite all rows in a region
+	rsRowMap := txn.groupByRegion()
+
+	log.Info("batchPrewriteSecondaries ")
+	errChan := make(chan error, len(rsRowMap))
 	defer close(errChan)
-	successChan := make(chan *rowMutation, len(txn.secondaryRows))
+	successChan := make(chan map[string]*rowMutation, len(rsRowMap))
 	defer close(successChan)
 
-	for i, rm := range txn.secondaryRows {
+	for _, regionRowMap := range rsRowMap {
 		wg.Add(1)
-		go func(i int, mutation *rowMutation) {
+		_, firstRowM := getFirstEntity(regionRowMap)
+		go func(tbl []byte, rMap map[string]*rowMutation) {
 			defer wg.Done()
-			err := txn.prewriteRowWithLockClean(mutation.tbl, mutation, false)
+			err := txn.batchPrewriteSecondaryRowsWithLockClean(tbl, rMap)
 			if err != nil {
-				// need rollback
 				errChan <- err
 			} else {
-				successChan <- mutation
+				successChan <- rMap
 			}
-		}(i, rm)
+		}(firstRowM.tbl, regionRowMap)
 	}
 	wg.Wait()
 
 	if len(errChan) != 0 {
 		// occur error, clean success prewrite mutations
-		log.Warning("prewrite secondary rows encounter error, rolling back", len(successChan))
+		log.Warning("batch prewrite secondary rows error, rolling back", len(successChan))
 		txn.rollbackRow(txn.primaryRow.tbl, txn.primaryRow)
 	L:
 		for {
 			select {
-			case succMutation := <-successChan:
+			case succMutMap := <-successChan:
 				{
-					txn.rollbackRow(succMutation.tbl, succMutation)
+					for _, rowMut := range succMutMap {
+						txn.rollbackRow(rowMut.tbl, rowMut)
+					}
 				}
 			default:
 				break L
@@ -451,6 +508,22 @@ func (txn *Txn) prewriteSecondaryConcurrent() error {
 		}
 	}
 	return nil
+}
+
+func getFirstEntity(rowMap map[string]*rowMutation) (string, *rowMutation) {
+	var firstRow string
+	var firstRowM *rowMutation
+	for row, rowM := range rowMap {
+		firstRow = row
+		firstRowM = rowM
+		break
+	}
+
+	return firstRow, firstRowM
+}
+
+func getBatchGroupKey(rInfo *hbase.RegionInfo, tblName string) string {
+	return rInfo.Server + "_" + rInfo.Name
 }
 
 func (txn *Txn) rollbackRow(tbl []byte, mutation *rowMutation) error {

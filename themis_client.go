@@ -1,12 +1,11 @@
 package themis
 
 import (
-	"bytes"
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"runtime/debug"
 
+	"encoding/binary"
 	"github.com/c4pt0r/go-hbase"
 	"github.com/c4pt0r/go-hbase/proto"
 	pb "github.com/golang/protobuf/proto"
@@ -23,6 +22,8 @@ type themisClient interface {
 	commitRow(tbl, row []byte, mutations []*columnMutation, prewriteTs, commitTs uint64, primaryOffset int) error
 	commitSecondaryRow(tbl, row []byte, mutations []*columnMutation, prewriteTs, commitTs uint64) error
 	prewriteSecondaryRow(tbl, row []byte, mutations []*columnMutation, prewriteTs uint64, secondaryLockBytes []byte) (ThemisLock, error)
+	batchPrewriteSecondaryRows(tbl []byte, rowM map[string]*rowMutation, prewriteTs uint64, secondaryLockBytes []byte) (map[string]ThemisLock, error)
+	batchCommitSecondaryRows(tbl []byte, rowM map[string]*rowMutation, prewriteTs, commitTs uint64) error
 }
 
 func newThemisClient(client hbase.HBaseClient) themisClient {
@@ -80,7 +81,8 @@ func (t *themisClientImpl) themisGet(tbl []byte, g *hbase.Get, startTs uint64, i
 
 func (t *themisClientImpl) prewriteRow(tbl []byte, row []byte, mutations []*columnMutation, prewriteTs uint64, primaryLockBytes []byte, secondaryLockBytes []byte, primaryOffset int) (ThemisLock, error) {
 	var cells []*proto.Cell
-	request := &ThemisPrewriteRequest{
+	request := &ThemisPrewriteRequest{}
+	request.ThemisPrewrite = &ThemisPrewrite{
 		Row:           row,
 		PrewriteTs:    pb.Uint64(prewriteTs),
 		PrimaryLock:   primaryLockBytes,
@@ -88,49 +90,46 @@ func (t *themisClientImpl) prewriteRow(tbl []byte, row []byte, mutations []*colu
 		PrimaryIndex:  pb.Int(primaryOffset),
 	}
 	if primaryLockBytes == nil {
-		request.PrimaryLock = []byte("")
+		request.ThemisPrewrite.PrimaryLock = []byte("")
 	}
 	if secondaryLockBytes == nil {
-		request.SecondaryLock = []byte("")
+		request.ThemisPrewrite.SecondaryLock = []byte("")
 	}
 	for _, m := range mutations {
 		cells = append(cells, m.toCell())
 	}
-	request.Mutations = cells
+	request.ThemisPrewrite.Mutations = cells
 
 	var res ThemisPrewriteResponse
 	err := t.call("prewriteRow", tbl, row, request, &res)
 	if err != nil {
 		return nil, err
 	}
-	b := res.GetResult()
+	b := res.ThemisPrewriteResult
 	if b == nil {
 		// if lock is empty, means we got the lock, otherwise some one else had
 		// locked this row, and the lock should return in rpc result
 		return nil, nil
 	}
 	// Oops, someone else have already locked this row.
-	// the result: b[0]=>commitTs b[1] => lockbytes b[2]=>family b[3]=>qual b[4]=>isExpired
-	buf := bytes.NewBuffer(b[0])
-	var commitTs int64
-	if err := binary.Read(buf, binary.BigEndian, &commitTs); err != nil {
-		return nil, err
-	}
-	// if b[0] != 0 means encounter conflict
+
+	commitTs := binary.BigEndian.Uint64(b.NewerWriteTs)
 	if commitTs != 0 {
 		log.Errorf("write conflict, encounter write with larger timestamp than prewriteTs=%d, commitTs=%d, row=%s", prewriteTs, commitTs, string(row))
 		return nil, kv.ErrLockConflict
 	}
-	l, err := parseLockFromBytes(b[1])
+
+	l, err := parseLockFromBytes(b.ExistLock)
 	if err != nil {
 		return nil, err
 	}
+
 	col := &hbase.ColumnCoordinate{
 		Table: tbl,
 		Row:   row,
 		Column: hbase.Column{
-			Family: b[2],
-			Qual:   b[3],
+			Family: b.Family,
+			Qual:   b.Qualifier,
 		},
 	}
 	l.setColumn(col)
@@ -173,14 +172,16 @@ func (t *themisClientImpl) getLockAndErase(cc *hbase.ColumnCoordinate, prewriteT
 
 func (t *themisClientImpl) commitRow(tbl, row []byte, mutations []*columnMutation,
 	prewriteTs, commitTs uint64, primaryOffset int) error {
-	req := &ThemisCommitRequest{
+	req := &ThemisCommitRequest{}
+	req.ThemisCommit = &ThemisCommit{
 		Row:          row,
 		PrewriteTs:   pb.Uint64(prewriteTs),
 		CommitTs:     pb.Uint64(commitTs),
 		PrimaryIndex: pb.Int(primaryOffset),
 	}
+
 	for _, m := range mutations {
-		req.Mutations = append(req.Mutations, m.toCell())
+		req.ThemisCommit.Mutations = append(req.ThemisCommit.Mutations, m.toCell())
 	}
 	var res ThemisCommitResponse
 	err := t.call("commitRow", tbl, row, req, &res)
@@ -194,6 +195,46 @@ func (t *themisClientImpl) commitRow(tbl, row []byte, mutations []*columnMutatio
 	return nil
 }
 
+func (t *themisClientImpl) batchCommitSecondaryRows(tbl []byte, rowMs map[string]*rowMutation, prewriteTs, commitTs uint64) error {
+	req := &ThemisBatchCommitSecondaryRequest{}
+
+	i := 0
+	var lastRow []byte
+	req.ThemisCommit = make([]*ThemisCommit, len(rowMs))
+	for row, rowM := range rowMs {
+		var cells []*proto.Cell
+		for col, m := range rowM.mutations {
+			cells = append(cells, toCellFromRowM(col, m))
+		}
+
+		req.ThemisCommit[i] = &ThemisCommit{
+			Row:          []byte(row),
+			Mutations:    cells,
+			PrewriteTs:   pb.Uint64(prewriteTs),
+			CommitTs:     pb.Uint64(commitTs),
+			PrimaryIndex: pb.Int(-1),
+		}
+		i++
+		lastRow = []byte(row)
+	}
+
+	var res ThemisBatchCommitSecondaryResponse
+	err := t.call("batchCommitSecondaryRows", tbl, lastRow, req, &res)
+	if err != nil {
+		return err
+	}
+
+	cResult := res.BatchCommitSecondaryResult
+	if cResult != nil && len(cResult) > 0 {
+		errorInfo := "commit failed, tbl:" + string(tbl)
+		for _, r := range cResult {
+			errorInfo += (" row:" + string(r.Row))
+		}
+		return errors.New(fmt.Sprintf("%s, commitTs:%d", errorInfo, commitTs))
+	}
+	return nil
+}
+
 func (t *themisClientImpl) commitSecondaryRow(tbl, row []byte, mutations []*columnMutation,
 	prewriteTs, commitTs uint64) error {
 	return t.commitRow(tbl, row, mutations, prewriteTs, commitTs, -1)
@@ -203,4 +244,108 @@ func (t *themisClientImpl) prewriteSecondaryRow(tbl, row []byte,
 	mutations []*columnMutation, prewriteTs uint64,
 	secondaryLockBytes []byte) (ThemisLock, error) {
 	return t.prewriteRow(tbl, row, mutations, prewriteTs, nil, secondaryLockBytes, -1)
+}
+
+func (t *themisClientImpl) batchPrewriteSecondaryRows(tbl []byte, rowMs map[string]*rowMutation, prewriteTs uint64, secondaryLockBytes []byte) (map[string]ThemisLock, error) {
+	request := &ThemisBatchPrewriteSecondaryRequest{}
+	request.ThemisPrewrite = make([]*ThemisPrewrite, len(rowMs))
+
+	if secondaryLockBytes == nil {
+		secondaryLockBytes = []byte("")
+	}
+	i := 0
+	var lastRow []byte
+	for row, rowM := range rowMs {
+		var cells []*proto.Cell
+		for col, m := range rowM.mutations {
+			cells = append(cells, toCellFromRowM(col, m))
+		}
+		request.ThemisPrewrite[i] = &ThemisPrewrite{
+			Row:           []byte(row),
+			Mutations:     cells,
+			PrewriteTs:    pb.Uint64(prewriteTs),
+			PrimaryLock:   []byte(""),
+			SecondaryLock: secondaryLockBytes,
+			PrimaryIndex:  pb.Int(-1),
+		}
+		i++
+		lastRow = []byte(row)
+	}
+
+	var res ThemisBatchPrewriteSecondaryResponse
+	err := t.call("batchPrewriteSecondaryRows", tbl, lastRow, request, &res)
+	if err != nil {
+		return nil, err
+	}
+
+	//Perhaps, part row has not in a region, sample : when region split, then need try
+	lockMap := make(map[string]ThemisLock)
+	if res.RowsNotInRegion != nil && len(res.RowsNotInRegion) > 0 {
+		for _, r := range res.RowsNotInRegion {
+			tl, err := t.prewriteSecondaryRow(tbl, r, rowMs[string(r)].mutationList(true), prewriteTs, secondaryLockBytes)
+			if err != nil {
+				return nil, err
+			}
+
+			if tl != nil {
+				lockMap[string(r)] = tl
+			}
+		}
+	}
+
+	b := res.ThemisPrewriteResult
+	if b != nil && len(b) > 0 {
+		for _, pResult := range b {
+			lock, err := judgePerwriteResultRow(pResult, tbl, prewriteTs, pResult.Row)
+			if err != nil {
+				return nil, err
+			}
+
+			if lock != nil {
+				lockMap[string(pResult.Row)] = lock
+			}
+		}
+	}
+
+	return lockMap, nil
+}
+
+func judgePerwriteResultRow(pResult *ThemisPrewriteResult, tbl []byte, prewriteTs uint64, row []byte) (ThemisLock, error) {
+	// Oops, someone else have already locked this row.
+	commitTs := binary.BigEndian.Uint64(pResult.NewerWriteTs)
+	if commitTs != 0 {
+		log.Errorf("write conflict, encounter write with larger timestamp than prewriteTs=%d, commitTs=%d, row=%s", prewriteTs, commitTs, string(row))
+		return nil, kv.ErrLockConflict
+	}
+
+	l, err := parseLockFromBytes(pResult.ExistLock)
+	if err != nil {
+		return nil, err
+	}
+	col := &hbase.ColumnCoordinate{
+		Table: tbl,
+		Row:   row,
+		Column: hbase.Column{
+			Family: pResult.Family,
+			Qual:   pResult.Qualifier,
+		},
+	}
+	l.setColumn(col)
+	return l, nil
+}
+
+func toCellFromRowM(col string, cvPair *mutationValuePair) *proto.Cell {
+	c := &hbase.Column{}
+	c.ParseFromString(col)
+	ret := &proto.Cell{
+		Family:    c.Family,
+		Qualifier: c.Qual,
+		Value:     cvPair.value,
+	}
+	if cvPair.typ == hbase.TypePut {
+		ret.CellType = proto.CellType_PUT.Enum()
+	} else {
+		ret.CellType = proto.CellType_DELETE.Enum()
+	}
+	return ret
 }

@@ -2,16 +2,43 @@
 // source: Themis.proto
 // DO NOT EDIT!
 
+/*
+Package proto is a generated protocol buffer package.
+
+It is generated from these files:
+	Themis.proto
+
+It has these top-level messages:
+	ThemisGetRequest
+	ThemisPrewrite
+	ThemisPrewriteRequest
+	ThemisPrewriteResponse
+	ThemisBatchPrewriteSecondaryRequest
+	ThemisBatchPrewriteSecondaryResponse
+	ThemisPrewriteResult
+	ThemisCommitRequest
+	ThemisCommitResponse
+	ThemisBatchCommitSecondaryRequest
+	ThemisBatchCommitSecondaryResponse
+	ThemisBatchCommitSecondaryResult
+	ThemisCommit
+	EraseLockRequest
+	EraseLockResponse
+	LockExpiredRequest
+	LockExpiredResponse
+*/
 package themis
 
 import (
+	"fmt"
 	. "github.com/c4pt0r/go-hbase/proto"
 	proto1 "github.com/golang/protobuf/proto"
+	"math"
 )
-import math "math"
 
 // Reference imports to suppress errors if they are not otherwise used.
 var _ = proto1.Marshal
+var _ = fmt.Errorf
 var _ = math.Inf
 
 type ThemisGetRequest struct {
@@ -46,7 +73,7 @@ func (m *ThemisGetRequest) GetIgnoreLock() bool {
 	return false
 }
 
-type ThemisPrewriteRequest struct {
+type ThemisPrewrite struct {
 	Row              []byte  `protobuf:"bytes,1,req,name=row" json:"row,omitempty"`
 	Mutations        []*Cell `protobuf:"bytes,2,rep,name=mutations" json:"mutations,omitempty"`
 	PrewriteTs       *uint64 `protobuf:"varint,3,req,name=prewriteTs" json:"prewriteTs,omitempty"`
@@ -56,114 +83,194 @@ type ThemisPrewriteRequest struct {
 	XXX_unrecognized []byte  `json:"-"`
 }
 
-func (m *ThemisPrewriteRequest) Reset()         { *m = ThemisPrewriteRequest{} }
-func (m *ThemisPrewriteRequest) String() string { return proto1.CompactTextString(m) }
-func (*ThemisPrewriteRequest) ProtoMessage()    {}
+func (m *ThemisPrewrite) Reset()         { *m = ThemisPrewrite{} }
+func (m *ThemisPrewrite) String() string { return proto1.CompactTextString(m) }
+func (*ThemisPrewrite) ProtoMessage()    {}
 
-func (m *ThemisPrewriteRequest) GetRow() []byte {
+func (m *ThemisPrewrite) GetRow() []byte {
 	if m != nil {
 		return m.Row
 	}
 	return nil
 }
 
-func (m *ThemisPrewriteRequest) GetMutations() []*Cell {
+func (m *ThemisPrewrite) GetMutations() []*Cell {
 	if m != nil {
 		return m.Mutations
 	}
 	return nil
 }
 
-func (m *ThemisPrewriteRequest) GetPrewriteTs() uint64 {
+func (m *ThemisPrewrite) GetPrewriteTs() uint64 {
 	if m != nil && m.PrewriteTs != nil {
 		return *m.PrewriteTs
 	}
 	return 0
 }
 
-func (m *ThemisPrewriteRequest) GetSecondaryLock() []byte {
+func (m *ThemisPrewrite) GetSecondaryLock() []byte {
 	if m != nil {
 		return m.SecondaryLock
 	}
 	return nil
 }
 
-func (m *ThemisPrewriteRequest) GetPrimaryLock() []byte {
+func (m *ThemisPrewrite) GetPrimaryLock() []byte {
 	if m != nil {
 		return m.PrimaryLock
 	}
 	return nil
 }
 
-func (m *ThemisPrewriteRequest) GetPrimaryIndex() int32 {
+func (m *ThemisPrewrite) GetPrimaryIndex() int32 {
 	if m != nil && m.PrimaryIndex != nil {
 		return *m.PrimaryIndex
 	}
 	return 0
 }
 
+type ThemisPrewriteRequest struct {
+	ThemisPrewrite   *ThemisPrewrite `protobuf:"bytes,1,req,name=themisPrewrite" json:"themisPrewrite,omitempty"`
+	XXX_unrecognized []byte          `json:"-"`
+}
+
+func (m *ThemisPrewriteRequest) Reset()         { *m = ThemisPrewriteRequest{} }
+func (m *ThemisPrewriteRequest) String() string { return proto1.CompactTextString(m) }
+func (*ThemisPrewriteRequest) ProtoMessage()    {}
+
+func (m *ThemisPrewriteRequest) GetThemisPrewrite() *ThemisPrewrite {
+	if m != nil {
+		return m.ThemisPrewrite
+	}
+	return nil
+}
+
 type ThemisPrewriteResponse struct {
-	Result           [][]byte `protobuf:"bytes,1,rep,name=result" json:"result,omitempty"`
-	XXX_unrecognized []byte   `json:"-"`
+	ThemisPrewriteResult *ThemisPrewriteResult `protobuf:"bytes,1,opt,name=themisPrewriteResult" json:"themisPrewriteResult,omitempty"`
+	XXX_unrecognized     []byte                `json:"-"`
 }
 
 func (m *ThemisPrewriteResponse) Reset()         { *m = ThemisPrewriteResponse{} }
 func (m *ThemisPrewriteResponse) String() string { return proto1.CompactTextString(m) }
 func (*ThemisPrewriteResponse) ProtoMessage()    {}
 
-func (m *ThemisPrewriteResponse) GetResult() [][]byte {
+func (m *ThemisPrewriteResponse) GetThemisPrewriteResult() *ThemisPrewriteResult {
 	if m != nil {
-		return m.Result
+		return m.ThemisPrewriteResult
 	}
 	return nil
 }
 
-type ThemisCommitRequest struct {
-	Row              []byte  `protobuf:"bytes,1,req,name=row" json:"row,omitempty"`
-	Mutations        []*Cell `protobuf:"bytes,2,rep,name=mutations" json:"mutations,omitempty"`
-	PrewriteTs       *uint64 `protobuf:"varint,3,req,name=prewriteTs" json:"prewriteTs,omitempty"`
-	CommitTs         *uint64 `protobuf:"varint,4,req,name=commitTs" json:"commitTs,omitempty"`
-	PrimaryIndex     *int32  `protobuf:"varint,5,req,name=primaryIndex" json:"primaryIndex,omitempty"`
-	XXX_unrecognized []byte  `json:"-"`
+type ThemisBatchPrewriteSecondaryRequest struct {
+	ThemisPrewrite   []*ThemisPrewrite `protobuf:"bytes,1,rep,name=themisPrewrite" json:"themisPrewrite,omitempty"`
+	XXX_unrecognized []byte            `json:"-"`
 }
 
-func (m *ThemisCommitRequest) Reset()         { *m = ThemisCommitRequest{} }
-func (m *ThemisCommitRequest) String() string { return proto1.CompactTextString(m) }
-func (*ThemisCommitRequest) ProtoMessage()    {}
+func (m *ThemisBatchPrewriteSecondaryRequest) Reset()         { *m = ThemisBatchPrewriteSecondaryRequest{} }
+func (m *ThemisBatchPrewriteSecondaryRequest) String() string { return proto1.CompactTextString(m) }
+func (*ThemisBatchPrewriteSecondaryRequest) ProtoMessage()    {}
 
-func (m *ThemisCommitRequest) GetRow() []byte {
+func (m *ThemisBatchPrewriteSecondaryRequest) GetThemisPrewrite() []*ThemisPrewrite {
+	if m != nil {
+		return m.ThemisPrewrite
+	}
+	return nil
+}
+
+type ThemisBatchPrewriteSecondaryResponse struct {
+	ThemisPrewriteResult []*ThemisPrewriteResult `protobuf:"bytes,1,rep,name=themisPrewriteResult" json:"themisPrewriteResult,omitempty"`
+	RowsNotInRegion      [][]byte                `protobuf:"bytes,2,rep,name=rowsNotInRegion" json:"rowsNotInRegion,omitempty"`
+	XXX_unrecognized     []byte                  `json:"-"`
+}
+
+func (m *ThemisBatchPrewriteSecondaryResponse) Reset()         { *m = ThemisBatchPrewriteSecondaryResponse{} }
+func (m *ThemisBatchPrewriteSecondaryResponse) String() string { return proto1.CompactTextString(m) }
+func (*ThemisBatchPrewriteSecondaryResponse) ProtoMessage()    {}
+
+func (m *ThemisBatchPrewriteSecondaryResponse) GetThemisPrewriteResult() []*ThemisPrewriteResult {
+	if m != nil {
+		return m.ThemisPrewriteResult
+	}
+	return nil
+}
+
+func (m *ThemisBatchPrewriteSecondaryResponse) GetRowsNotInRegion() [][]byte {
+	if m != nil {
+		return m.RowsNotInRegion
+	}
+	return nil
+}
+
+type ThemisPrewriteResult struct {
+	NewerWriteTs     []byte `protobuf:"bytes,1,req,name=newerWriteTs" json:"newerWriteTs,omitempty"`
+	ExistLock        []byte `protobuf:"bytes,2,req,name=existLock" json:"existLock,omitempty"`
+	Family           []byte `protobuf:"bytes,3,req,name=family" json:"family,omitempty"`
+	Qualifier        []byte `protobuf:"bytes,4,req,name=qualifier" json:"qualifier,omitempty"`
+	LockExpired      []byte `protobuf:"bytes,5,req,name=lockExpired" json:"lockExpired,omitempty"`
+	Row              []byte `protobuf:"bytes,6,req,name=row" json:"row,omitempty"`
+	XXX_unrecognized []byte `json:"-"`
+}
+
+func (m *ThemisPrewriteResult) Reset()         { *m = ThemisPrewriteResult{} }
+func (m *ThemisPrewriteResult) String() string { return proto1.CompactTextString(m) }
+func (*ThemisPrewriteResult) ProtoMessage()    {}
+
+func (m *ThemisPrewriteResult) GetNewerWriteTs() []byte {
+	if m != nil {
+		return m.NewerWriteTs
+	}
+	return nil
+}
+
+func (m *ThemisPrewriteResult) GetExistLock() []byte {
+	if m != nil {
+		return m.ExistLock
+	}
+	return nil
+}
+
+func (m *ThemisPrewriteResult) GetFamily() []byte {
+	if m != nil {
+		return m.Family
+	}
+	return nil
+}
+
+func (m *ThemisPrewriteResult) GetQualifier() []byte {
+	if m != nil {
+		return m.Qualifier
+	}
+	return nil
+}
+
+func (m *ThemisPrewriteResult) GetLockExpired() []byte {
+	if m != nil {
+		return m.LockExpired
+	}
+	return nil
+}
+
+func (m *ThemisPrewriteResult) GetRow() []byte {
 	if m != nil {
 		return m.Row
 	}
 	return nil
 }
 
-func (m *ThemisCommitRequest) GetMutations() []*Cell {
+type ThemisCommitRequest struct {
+	ThemisCommit     *ThemisCommit `protobuf:"bytes,1,req,name=themisCommit" json:"themisCommit,omitempty"`
+	XXX_unrecognized []byte        `json:"-"`
+}
+
+func (m *ThemisCommitRequest) Reset()         { *m = ThemisCommitRequest{} }
+func (m *ThemisCommitRequest) String() string { return proto1.CompactTextString(m) }
+func (*ThemisCommitRequest) ProtoMessage()    {}
+
+func (m *ThemisCommitRequest) GetThemisCommit() *ThemisCommit {
 	if m != nil {
-		return m.Mutations
+		return m.ThemisCommit
 	}
 	return nil
-}
-
-func (m *ThemisCommitRequest) GetPrewriteTs() uint64 {
-	if m != nil && m.PrewriteTs != nil {
-		return *m.PrewriteTs
-	}
-	return 0
-}
-
-func (m *ThemisCommitRequest) GetCommitTs() uint64 {
-	if m != nil && m.CommitTs != nil {
-		return *m.CommitTs
-	}
-	return 0
-}
-
-func (m *ThemisCommitRequest) GetPrimaryIndex() int32 {
-	if m != nil && m.PrimaryIndex != nil {
-		return *m.PrimaryIndex
-	}
-	return 0
 }
 
 type ThemisCommitResponse struct {
@@ -180,6 +287,110 @@ func (m *ThemisCommitResponse) GetResult() bool {
 		return *m.Result
 	}
 	return false
+}
+
+type ThemisBatchCommitSecondaryRequest struct {
+	ThemisCommit     []*ThemisCommit `protobuf:"bytes,1,rep,name=themisCommit" json:"themisCommit,omitempty"`
+	XXX_unrecognized []byte          `json:"-"`
+}
+
+func (m *ThemisBatchCommitSecondaryRequest) Reset()         { *m = ThemisBatchCommitSecondaryRequest{} }
+func (m *ThemisBatchCommitSecondaryRequest) String() string { return proto1.CompactTextString(m) }
+func (*ThemisBatchCommitSecondaryRequest) ProtoMessage()    {}
+
+func (m *ThemisBatchCommitSecondaryRequest) GetThemisCommit() []*ThemisCommit {
+	if m != nil {
+		return m.ThemisCommit
+	}
+	return nil
+}
+
+type ThemisBatchCommitSecondaryResponse struct {
+	BatchCommitSecondaryResult []*ThemisBatchCommitSecondaryResult `protobuf:"bytes,1,rep,name=batchCommitSecondaryResult" json:"batchCommitSecondaryResult,omitempty"`
+	XXX_unrecognized           []byte                              `json:"-"`
+}
+
+func (m *ThemisBatchCommitSecondaryResponse) Reset()         { *m = ThemisBatchCommitSecondaryResponse{} }
+func (m *ThemisBatchCommitSecondaryResponse) String() string { return proto1.CompactTextString(m) }
+func (*ThemisBatchCommitSecondaryResponse) ProtoMessage()    {}
+
+func (m *ThemisBatchCommitSecondaryResponse) GetBatchCommitSecondaryResult() []*ThemisBatchCommitSecondaryResult {
+	if m != nil {
+		return m.BatchCommitSecondaryResult
+	}
+	return nil
+}
+
+type ThemisBatchCommitSecondaryResult struct {
+	Row              []byte `protobuf:"bytes,1,req,name=row" json:"row,omitempty"`
+	Success          *bool  `protobuf:"varint,2,req,name=success" json:"success,omitempty"`
+	XXX_unrecognized []byte `json:"-"`
+}
+
+func (m *ThemisBatchCommitSecondaryResult) Reset()         { *m = ThemisBatchCommitSecondaryResult{} }
+func (m *ThemisBatchCommitSecondaryResult) String() string { return proto1.CompactTextString(m) }
+func (*ThemisBatchCommitSecondaryResult) ProtoMessage()    {}
+
+func (m *ThemisBatchCommitSecondaryResult) GetRow() []byte {
+	if m != nil {
+		return m.Row
+	}
+	return nil
+}
+
+func (m *ThemisBatchCommitSecondaryResult) GetSuccess() bool {
+	if m != nil && m.Success != nil {
+		return *m.Success
+	}
+	return false
+}
+
+type ThemisCommit struct {
+	Row              []byte  `protobuf:"bytes,1,req,name=row" json:"row,omitempty"`
+	Mutations        []*Cell `protobuf:"bytes,2,rep,name=mutations" json:"mutations,omitempty"`
+	PrewriteTs       *uint64 `protobuf:"varint,3,req,name=prewriteTs" json:"prewriteTs,omitempty"`
+	CommitTs         *uint64 `protobuf:"varint,4,req,name=commitTs" json:"commitTs,omitempty"`
+	PrimaryIndex     *int32  `protobuf:"varint,5,req,name=primaryIndex" json:"primaryIndex,omitempty"`
+	XXX_unrecognized []byte  `json:"-"`
+}
+
+func (m *ThemisCommit) Reset()         { *m = ThemisCommit{} }
+func (m *ThemisCommit) String() string { return proto1.CompactTextString(m) }
+func (*ThemisCommit) ProtoMessage()    {}
+
+func (m *ThemisCommit) GetRow() []byte {
+	if m != nil {
+		return m.Row
+	}
+	return nil
+}
+
+func (m *ThemisCommit) GetMutations() []*Cell {
+	if m != nil {
+		return m.Mutations
+	}
+	return nil
+}
+
+func (m *ThemisCommit) GetPrewriteTs() uint64 {
+	if m != nil && m.PrewriteTs != nil {
+		return *m.PrewriteTs
+	}
+	return 0
+}
+
+func (m *ThemisCommit) GetCommitTs() uint64 {
+	if m != nil && m.CommitTs != nil {
+		return *m.CommitTs
+	}
+	return 0
+}
+
+func (m *ThemisCommit) GetPrimaryIndex() int32 {
+	if m != nil && m.PrimaryIndex != nil {
+		return *m.PrimaryIndex
+	}
+	return 0
 }
 
 type EraseLockRequest struct {
@@ -268,7 +479,4 @@ func (m *LockExpiredResponse) GetExpired() bool {
 		return *m.Expired
 	}
 	return false
-}
-
-func init() {
 }

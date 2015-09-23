@@ -11,6 +11,7 @@ import (
 	"net/http"
 	_ "net/http/pprof"
 
+	"flag"
 	"github.com/c4pt0r/go-hbase"
 	"github.com/ngaut/log"
 	"github.com/pingcap/go-themis"
@@ -19,12 +20,10 @@ import (
 var c hbase.HBaseClient
 var tblName = "themis_bench"
 
-func init() {
+func createHBaseClient(zk string) error {
 	var err error
-	c, err = hbase.NewClient([]string{"shenli-pc"}, "/hbase")
-	if err != nil {
-		log.Fatal(err)
-	}
+	c, err = hbase.NewClient([]string{zk}, "/hbase")
+	return err
 }
 
 func createTable() {
@@ -48,8 +47,17 @@ func dropTable() {
 }
 
 func main() {
+	zk := flag.String("zk", "cuiqiu-pc:2222", "please input hbase zk address and port, example: -zk=cuiqiu-pc:2222")
+	flag.Parse()
+	err := createHBaseClient(*zk)
+	if err != nil {
+		log.Warn("argument zk : modify hbase zk address and port, example: -zk=cuiqiu-pc:2222")
+		log.Fatal(err)
+		return
+	}
+
 	runtime.GOMAXPROCS(runtime.NumCPU())
-	log.SetLevelByString("error")
+	log.SetLevelByString("warn")
 	dropTable()
 	createTable()
 
@@ -67,18 +75,22 @@ func main() {
 			for j := 0; j < 10; j++ {
 				tx := themis.NewTxn(c)
 
-				put := hbase.NewPut([]byte(fmt.Sprintf("Row_%d_%d", i, j)))
+				put := hbase.NewPut([]byte(fmt.Sprintf("1Row_%d_%d", i, j)))
 				put.AddValue([]byte("cf"), []byte("q"), []byte(strconv.Itoa(i)))
 
-				put2 := hbase.NewPut([]byte(fmt.Sprintf("SRow_%d_%d", i, j)))
+				put2 := hbase.NewPut([]byte(fmt.Sprintf("2Row_%d_%d", i, j)))
 				put2.AddValue([]byte("cf"), []byte("q"), []byte(strconv.Itoa(i)))
 
-				put3 := hbase.NewPut([]byte(fmt.Sprintf("LRow_%d_%d", i, j)))
+				put3 := hbase.NewPut([]byte(fmt.Sprintf("3Row_%d_%d", i, j)))
 				put3.AddValue([]byte("cf"), []byte("q"), []byte(strconv.Itoa(i)))
+
+				put4 := hbase.NewPut([]byte(fmt.Sprintf("4Row_%d_%d", i, j)))
+				put4.AddValue([]byte("cf"), []byte("q"), []byte(strconv.Itoa(i)))
 
 				tx.Put(tblName, put)
 				tx.Put(tblName, put2)
 				tx.Put(tblName, put3)
+				tx.Put(tblName, put4)
 
 				err := tx.Commit()
 				if err != nil {
