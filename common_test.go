@@ -3,24 +3,32 @@ package themis
 import (
 	"github.com/c4pt0r/go-hbase"
 	"github.com/ngaut/log"
+	"flag"
 )
 
-const themisTestTableName string = "themis_test"
-const cfName string = "cf"
+const (
+	themisTestTableName string = "themis_test"
+ 	cfName string = "cf"
+)
+
+var zk *string = flag.String("zk", "cuiqiu-pc:2222", "hbase zookeeper info")
 
 func createHBaseClient() (hbase.HBaseClient, error) {
-	cli, err := hbase.NewClient([]string{"cuiqiu-pc:2222"}, "/hbase")
+	flag.Parse()
+	cli, err := hbase.NewClient([]string{*zk}, "/hbase")
 	if err != nil {
-		log.Fatal(err)
 		return nil, err
 	}
 
 	return cli, nil
 }
 
-func createNewTableAndDropOldTable(cli hbase.HBaseClient, tblName string, family string) {
+func createNewTableAndDropOldTable(cli hbase.HBaseClient, tblName string, family string) error {
 	if cli.TableExists(tblName) {
-		dropTable(cli, tblName)
+		err := dropTable(cli, tblName)
+		if err != nil {
+			return err
+		}
 		log.Info("drop table : " + tblName)
 	}
 
@@ -30,25 +38,28 @@ func createNewTableAndDropOldTable(cli hbase.HBaseClient, tblName string, family
 	t.AddColumnDesc(cf)
 	err := cli.CreateTable(t, nil)
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 
+	return nil
 }
 
-func dropTable(cli hbase.HBaseClient, tblName string) {
+func dropTable(cli hbase.HBaseClient, tblName string) error {
 	if !cli.TableExists(tblName) {
 		log.Info("table not exist")
-		return
+		return nil
 	}
 
 	t := hbase.NewTableNameWithDefaultNS(tblName)
 	err := cli.DisableTable(t)
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 
-	err2 := cli.DropTable(t)
-	if err2 != nil {
-		log.Fatal(err2)
+	err = cli.DropTable(t)
+	if err != nil {
+		return err
 	}
+
+	return nil
 }

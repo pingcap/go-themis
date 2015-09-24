@@ -17,11 +17,11 @@ var _ = Suite(&ParallelTestSuit{})
 func (s *ParallelTestSuit) TestParallelHbaseCall(c *C) {
 	runtime.GOMAXPROCS(runtime.NumCPU() / 2)
 	cli, err := createHBaseClient()
-	if err != nil {
-		return
-	}
+	c.Assert(err, Equals, nil)
 
-	createNewTableAndDropOldTable(cli, themisTestTableName, cfName)
+	err = createNewTableAndDropOldTable(cli, themisTestTableName, cfName)
+	c.Assert(err, Equals, nil)
+
 	wg := sync.WaitGroup{}
 	for i := 0; i < 10; i++ {
 		wg.Add(1)

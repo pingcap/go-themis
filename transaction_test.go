@@ -19,7 +19,8 @@ var _ = Suite(&TransactionTestSuit{})
 
 func (s *TransactionTestSuit) SetUpSuite(c *C) {
 	s.cli, _ = createHBaseClient()
-	createNewTableAndDropOldTable(s.cli, themisTestTableName, cfName)
+	err := createNewTableAndDropOldTable(s.cli, themisTestTableName, cfName)
+	c.Assert(err, Equals, nil)
 }
 
 func (s *TransactionTestSuit) TestTransaction(c *C) {
