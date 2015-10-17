@@ -312,9 +312,10 @@ func (t *themisClientImpl) batchPrewriteSecondaryRows(tbl []byte, rowMs map[stri
 
 func judgePerwriteResultRow(pResult *ThemisPrewriteResult, tbl []byte, prewriteTs uint64, row []byte) (ThemisLock, error) {
 	// Oops, someone else have already locked this row.
-	commitTs := binary.BigEndian.Uint64(pResult.NewerWriteTs)
-	if commitTs != 0 {
-		log.Errorf("write conflict, encounter write with larger timestamp than prewriteTs=%d, commitTs=%d, row=%s", prewriteTs, commitTs, string(row))
+	newerTs := binary.BigEndian.Uint64(pResult.NewerWriteTs)
+	if newerTs != 0 {
+		log.Errorf("write conflict, encounter write with larger timestamp than prewriteTs=%d, row=%s, conflict: newerTs=%d, row=%q",
+			prewriteTs, string(row), newerTs, pResult.Row)
 		return nil, kv.ErrLockConflict
 	}
 

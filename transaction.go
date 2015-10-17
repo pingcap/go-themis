@@ -10,6 +10,7 @@ import (
 	"github.com/ngaut/log"
 	"github.com/pingcap/go-themis/oracle"
 	"github.com/pingcap/go-themis/oracle/oracles"
+	"time"
 )
 
 type TxnConfig struct {
@@ -346,21 +347,49 @@ func (txn *Txn) batchPrewriteSecondaryRowsWithLockClean(tbl []byte, rowMs map[st
 	if locks != nil && len(locks) > 0 {
 		// try one more time after clean lock successfully
 		for row, lock := range locks {
-			err = txn.tryToCleanLock(lock)
+			err = txn.tryCleanLockAndPrewrite(tbl, rowMs[row], false, lock, 2)
 			if err != nil {
 				return err
 			}
-
-			//TODO: check lock expire
-			lock, err2 := txn.prewriteRow(tbl, rowMs[row], false)
-			if err2 != nil {
-				return err2
-			}
-			if lock != nil {
-				return fmt.Errorf("can't clean lock, column:%+v; conflict lock: %+v, lock ts: %d", lock.getColumn(), lock, lock.getTimestamp())
-			}
 		}
 	}
+	return nil
+}
+
+func (txn *Txn) tryCleanLockAndPrewrite(tbl []byte, mutation *rowMutation, containPrimary bool, lock ThemisLock, tryCount int) error {
+	curCount := 0
+	for {
+		if curCount >= tryCount {
+			break
+		}
+
+		if curCount > 0 {
+			log.Warnf("tryCleanLockAndPrewrite, tbl:%q, row:%q, curCount:%d", tbl, mutation.row, curCount)
+			time.Sleep(100 * time.Millisecond)
+		}
+
+		err := txn.tryToCleanLock(lock)
+		if err != nil {
+			return err
+		}
+
+		//TODO: check lock expire
+		lock, err2 := txn.prewriteRow(tbl, mutation, containPrimary)
+		if err2 != nil {
+			return err2
+		}
+
+		if lock == nil {
+			break
+		}
+
+		curCount++
+	}
+
+	if lock != nil {
+		return fmt.Errorf("can't clean lock, column:%+v; conflict lock: %+v, lock ts: %d", lock.getColumn(), lock, lock.getTimestamp())
+	}
+
 	return nil
 }
 
@@ -371,17 +400,9 @@ func (txn *Txn) prewriteRowWithLockClean(tbl []byte, mutation *rowMutation, cont
 	}
 	// lock clean
 	if lock != nil {
-		err = txn.tryToCleanLock(lock)
+		err = txn.tryCleanLockAndPrewrite(tbl, mutation, containPrimary, lock, 2)
 		if err != nil {
 			return err
-		}
-		// try one more time after clean lock successfully
-		lock, err = txn.prewriteRow(tbl, mutation, containPrimary)
-		if err != nil {
-			return err
-		}
-		if lock != nil {
-			return fmt.Errorf("can't clean lock, column:%+v; conflict lock: %+v, lock ts: %d", lock.getColumn(), lock, lock.getTimestamp())
 		}
 	}
 	return nil
@@ -506,6 +527,8 @@ func (txn *Txn) batchPrewriteSecondaries() error {
 				break L
 			}
 		}
+
+		return <-errChan
 	}
 	return nil
 }
@@ -569,4 +592,12 @@ func (txn *Txn) Release() {
 
 func (txn *Txn) String() string {
 	return fmt.Sprintf("%d", txn.startTs)
+}
+
+func (txn *Txn) GetCommitTS() uint64 {
+	return txn.commitTs
+}
+
+func (txn *Txn) GetStartTS() uint64 {
+	return txn.startTs
 }

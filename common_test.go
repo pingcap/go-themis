@@ -1,14 +1,14 @@
 package themis
 
 import (
+	"flag"
 	"github.com/c4pt0r/go-hbase"
 	"github.com/ngaut/log"
-	"flag"
 )
 
 const (
 	themisTestTableName string = "themis_test"
- 	cfName string = "cf"
+	cfName              string = "cf"
 )
 
 var zk *string = flag.String("zk", "cuiqiu-pc:2222", "hbase zookeeper info")
