@@ -602,21 +602,23 @@ func (txn *Txn) GetStartTS() uint64 {
 	return txn.startTs
 }
 
-func (txn *Txn) lockRow(tbl string, rowkey []byte) {
+func (txn *Txn) LockRow(tbl string, rowkey []byte) error {
 	g := hbase.NewGet(rowkey)
 	r, err := txn.Get(tbl, g)
 	if err != nil {
 		log.Warnf("get row error, table:%s, row:%q, error:%v", tbl, rowkey, err)
-		return
+		return err
 	}
 
 	if r == nil {
 		log.Warnf("has not data to lock, table:%s, row:%q", tbl, rowkey)
-		return
+		return nil
 	}
 
 	for _, v := range r.Columns {
 		//if cache has data, then don't replace
 		txn.mutationCache.addMutation([]byte(tbl), rowkey, &v.Column, hbase.TypeMinimum, nil, true)
 	}
+
+	return nil
 }

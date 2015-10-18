@@ -266,7 +266,8 @@ func (s *TransactionTestSuit) TestLockRow(c *C) {
 	checkCommitSuccess(s, c, row)
 
 	tx = NewTxn(s.cli)
-	tx.lockRow(themisTestTableName, row)
+	err := tx.LockRow(themisTestTableName, row)
+	c.Assert(err, Equals, nil)
 	col := hbase.NewColumnCoordinate(themisTestTableName, row, cfName, []byte("q"))
 	tx.primary = hbase.ColumnCoordinate{
 		Table:  themisTestTableName,
@@ -278,7 +279,7 @@ func (s *TransactionTestSuit) TestLockRow(c *C) {
 	tx.singleRowTxn = true
 	tx.secondaryLockBytes = nil
 
-	err := tx.prewritePrimary()
+	err = tx.prewritePrimary()
 	c.Assert(err, Equals, nil)
 	colMap := make(map[string]string)
 	colMap["#p:"+cfName+"#v"] = ""
