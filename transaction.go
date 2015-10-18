@@ -102,13 +102,13 @@ func (txn *Txn) Get(tbl string, g *hbase.Get) (*hbase.ResultRow, error) {
 func (txn *Txn) Put(tbl string, p *hbase.Put) {
 	// add mutation to buffer
 	for _, e := range getEntriesFromPut(p) {
-		txn.mutationCache.addMutation([]byte(tbl), p.Row, e.Column, e.typ, e.value)
+		txn.mutationCache.addMutation([]byte(tbl), p.Row, e.Column, e.typ, e.value, false)
 	}
 }
 
 func (txn *Txn) Delete(tbl string, p *hbase.Delete) {
 	for _, e := range getEntriesFromDel(p) {
-		txn.mutationCache.addMutation([]byte(tbl), p.Row, e.Column, e.typ, e.value)
+		txn.mutationCache.addMutation([]byte(tbl), p.Row, e.Column, e.typ, e.value, false)
 	}
 }
 
@@ -600,4 +600,23 @@ func (txn *Txn) GetCommitTS() uint64 {
 
 func (txn *Txn) GetStartTS() uint64 {
 	return txn.startTs
+}
+
+func (txn *Txn) lockRow(tbl string, rowkey []byte) {
+	g := hbase.NewGet(rowkey)
+	r, err := txn.Get(tbl, g)
+	if err != nil {
+		log.Warnf("get row error, table:%s, row:%q, error:%v", tbl, rowkey, err)
+		return
+	}
+
+	if r == nil {
+		log.Warnf("has not data to lock, table:%s, row:%q", tbl, rowkey)
+		return
+	}
+
+	for _, v := range r.Columns {
+		//if cache has data, then don't replace
+		txn.mutationCache.addMutation([]byte(tbl), rowkey, &v.Column, hbase.TypeMinimum, nil, true)
+	}
 }

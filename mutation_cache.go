@@ -32,7 +32,7 @@ func getEntriesFromDel(p *hbase.Delete) []*columnMutation {
 					Family: []byte(f),
 				},
 				mutationValuePair: &mutationValuePair{
-					typ: hbase.TypeDelete,
+					typ: hbase.TypeDeleteColumn,
 				},
 			}
 			ret = append(ret, mutation)
@@ -44,7 +44,7 @@ func getEntriesFromDel(p *hbase.Delete) []*columnMutation {
 					Qual:   []byte(q),
 				},
 				mutationValuePair: &mutationValuePair{
-					typ: hbase.TypeDelete,
+					typ: hbase.TypeDeleteColumn,
 				},
 			}
 			ret = append(ret, mutation)
@@ -82,8 +82,8 @@ func (cm *columnMutation) toCell() *proto.Cell {
 	}
 	if cm.typ == hbase.TypePut {
 		ret.CellType = proto.CellType_PUT.Enum()
-	} else {
-		ret.CellType = proto.CellType_DELETE.Enum()
+	} else if cm.typ == hbase.TypeDeleteColumn {
+		ret.CellType = proto.CellType_DELETE_COLUMN.Enum()
 	}
 	return ret
 }
@@ -125,7 +125,13 @@ func newRowMutation(tbl, row []byte) *rowMutation {
 	}
 }
 
-func (r *rowMutation) addMutation(c *hbase.Column, typ hbase.Type, val []byte) {
+func (r *rowMutation) addMutation(c *hbase.Column, typ hbase.Type, val []byte, onlyLock bool) {
+	// 3 scene: put, delete, onlyLock
+	// onlyLock, has not data modify, if contained, then not replace, also can lock row
+	if onlyLock && r.mutations[c.String()] != nil {
+		return
+	}
+
 	r.mutations[c.String()] = &mutationValuePair{
 		typ:   typ,
 		value: val,
@@ -167,7 +173,7 @@ func newColumnMutationCache() *columnMutationCache {
 	}
 }
 
-func (c *columnMutationCache) addMutation(tbl []byte, row []byte, col *hbase.Column, t hbase.Type, v []byte) {
+func (c *columnMutationCache) addMutation(tbl []byte, row []byte, col *hbase.Column, t hbase.Type, v []byte, onlyLock bool) {
 	tblRowMutations, ok := c.mutations[string(tbl)]
 	if !ok {
 		// create table mutation map
@@ -181,7 +187,7 @@ func (c *columnMutationCache) addMutation(tbl []byte, row []byte, col *hbase.Col
 		rowMutations = newRowMutation(tbl, row)
 		tblRowMutations[string(row)] = rowMutations
 	}
-	rowMutations.addMutation(col, t, v)
+	rowMutations.addMutation(col, t, v, onlyLock)
 }
 
 func (c *columnMutationCache) getMutation(cc *hbase.ColumnCoordinate) *mutationValuePair {

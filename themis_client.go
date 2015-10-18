@@ -345,8 +345,8 @@ func toCellFromRowM(col string, cvPair *mutationValuePair) *proto.Cell {
 	}
 	if cvPair.typ == hbase.TypePut {
 		ret.CellType = proto.CellType_PUT.Enum()
-	} else {
-		ret.CellType = proto.CellType_DELETE.Enum()
+	} else if cvPair.typ == hbase.TypeDeleteColumn {
+		ret.CellType = proto.CellType_DELETE_COLUMN.Enum()
 	}
 	return ret
 }
