@@ -268,29 +268,21 @@ func (s *TransactionTestSuit) TestLockRow(c *C) {
 	tx = NewTxn(s.cli)
 	err := tx.LockRow(themisTestTableName, row)
 	c.Assert(err, Equals, nil)
-	col := hbase.NewColumnCoordinate(themisTestTableName, row, cfName, []byte("q"))
-	tx.primary = hbase.ColumnCoordinate{
-		Table:  themisTestTableName,
-		Row:    row,
-		Column: col,
-	}
-	tx.primaryRowOffset = 0
-	tx.primaryRow = row
-	tx.singleRowTxn = true
-	tx.secondaryLockBytes = nil
 
+	tx.selectPrepareAndSecondary()
 	err = tx.prewritePrimary()
 	c.Assert(err, Equals, nil)
 	colMap := make(map[string]string)
-	colMap["#p:"+cfName+"#v"] = ""
-	colMap[cfName+":v"] = ""
-	colMap["L:"+cfName+"#v"] = ""
-	var r Result
+	colMap["#p:"+cfName+"#q"] = ""
+	colMap[cfName+":q"] = ""
+	colMap["L:"+cfName+"#q"] = ""
+	var r *hbase.ResultRow
 	r, err = tx.client.Get(themisTestTableName, hbase.NewGet(row))
 	c.Assert(err, Equals, nil)
 	c.Assert(3, Equals, len(r.Columns))
 	for _, v := range r.Columns {
-		c.Assert(colMap[string(v.Family)+":"+string(v.Qual)] != nil, Equals, true)
+		_, exist := colMap[string(v.Family)+":"+string(v.Qual)]
+		c.Assert(exist, Equals, true)
 	}
 	tx.commitTs = tx.startTs + 1
 	tx.commitPrimary()
@@ -299,14 +291,15 @@ func (s *TransactionTestSuit) TestLockRow(c *C) {
 }
 
 func checkCommitSuccess(s *TransactionTestSuit, c *C, row []byte) {
-	tx = NewTxn(s.cli)
+	tx := NewTxn(s.cli)
 	colMap := make(map[string]string)
-	colMap["#p:"+cfName+"#v"] = ""
-	colMap[cfName+":v"] = ""
+	colMap["#p:"+cfName+"#q"] = ""
+	colMap[cfName+":q"] = ""
 	r, err := tx.client.Get(themisTestTableName, hbase.NewGet(row))
 	c.Assert(err, Equals, nil)
 	c.Assert(2, Equals, len(r.Columns))
 	for _, v := range r.Columns {
-		c.Assert(colMap[string(v.Family)+":"+string(v.Qual)] != nil, Equals, true)
+		_, exist := colMap[string(v.Family)+":"+string(v.Qual)]
+		c.Assert(exist, Equals, true)
 	}
 }
