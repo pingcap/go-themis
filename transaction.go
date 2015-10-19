@@ -86,14 +86,14 @@ func (txn *Txn) AddConfig(conf TxnConfig) *Txn {
 func (txn *Txn) Get(tbl string, g *hbase.Get) (*hbase.ResultRow, error) {
 	r, err := txn.themisCli.themisGet([]byte(tbl), g, txn.startTs, false)
 	if err != nil {
-		return nil, err
+		return nil, errors.Trace(err)
 	}
 	// contain locks, try to clean and get again
 	if r != nil && isLockResult(r) {
 		log.Warning("get lock, try to clean and get again")
 		r, err = txn.tryToCleanLockAndGetAgain([]byte(tbl), g, r.SortedColumns)
 		if err != nil {
-			return nil, err
+			return nil, errors.Trace(err)
 		}
 	}
 	return r, nil
@@ -106,10 +106,15 @@ func (txn *Txn) Put(tbl string, p *hbase.Put) {
 	}
 }
 
-func (txn *Txn) Delete(tbl string, p *hbase.Delete) {
-	for _, e := range getEntriesFromDel(p) {
+func (txn *Txn) Delete(tbl string, p *hbase.Delete) error {
+	entries, err := getEntriesFromDel(p)
+	if err != nil {
+		return errors.Trace(err)
+	}
+	for _, e := range entries {
 		txn.mutationCache.addMutation([]byte(tbl), p.Row, e.Column, e.typ, e.value, false)
 	}
+	return nil
 }
 
 func (txn *Txn) Commit() error {
@@ -121,12 +126,12 @@ func (txn *Txn) Commit() error {
 	txn.selectPrepareAndSecondary()
 	err := txn.prewritePrimary()
 	if err != nil {
-		return err
+		return errors.Trace(err)
 	}
 
 	err = txn.prewriteSecondary()
 	if err != nil {
-		return err
+		return errors.Trace(err)
 	}
 
 	txn.commitTs = txn.oracle.GetTimestamp()
@@ -135,7 +140,7 @@ func (txn *Txn) Commit() error {
 		// commit primary error, rollback
 		txn.rollbackRow(txn.primaryRow.tbl, txn.primaryRow)
 		txn.rollbackSecondaryRow(len(txn.secondaryRows) - 1)
-		return err
+		return errors.Trace(err)
 	}
 
 	txn.commitSecondary()
@@ -271,13 +276,13 @@ func (txn *Txn) tryToCleanLockAndGetAgain(tbl []byte, g *hbase.Get, lockKvs []*h
 	for _, lock := range locks {
 		err := txn.tryToCleanLock(lock)
 		if err != nil {
-			return nil, err
+			return nil, errors.Trace(err)
 		}
 	}
 	// get again, ignore lock
 	r, err := txn.themisCli.themisGet([]byte(tbl), g, txn.startTs, true)
 	if err != nil {
-		return nil, err
+		return nil, errors.Trace(err)
 	}
 	return r, nil
 }
@@ -286,7 +291,7 @@ func (txn *Txn) tryToCleanLock(lock ThemisLock) error {
 	log.Warn("try to clean lock")
 	expired, err := txn.themisCli.checkAndSetLockIsExpired(lock)
 	if err != nil {
-		return err
+		return errors.Trace(err)
 	}
 	// only clean expired lock
 	if expired {
@@ -295,7 +300,7 @@ func (txn *Txn) tryToCleanLock(lock ThemisLock) error {
 		pl := lock.getPrimaryLock()
 		commitTs, cleanedLock, err := txn.lockCleaner.cleanPrimaryLock(pl.getColumn(), pl.getTimestamp())
 		if err != nil {
-			return err
+			return errors.Trace(err)
 		}
 		//
 		if cleanedLock != nil {
@@ -313,7 +318,7 @@ func (txn *Txn) tryToCleanLock(lock ThemisLock) error {
 				// dirty data
 				err = txn.lockCleaner.eraseLockAndData(cc.Table, cc.Row, []hbase.Column{cc.Column}, pl.getTimestamp())
 				if err != nil {
-					return err
+					return errors.Trace(err)
 				}
 			} else {
 				// primary row is committed, so we must commit other
@@ -327,7 +332,7 @@ func (txn *Txn) tryToCleanLock(lock ThemisLock) error {
 				err = txn.themisCli.commitSecondaryRow(cc.Table, cc.Row,
 					[]*columnMutation{mutation}, pl.getTimestamp(), commitTs)
 				if err != nil {
-					return err
+					return errors.Trace(err)
 				}
 			}
 		}
@@ -340,16 +345,16 @@ func (txn *Txn) tryToCleanLock(lock ThemisLock) error {
 func (txn *Txn) batchPrewriteSecondaryRowsWithLockClean(tbl []byte, rowMs map[string]*rowMutation) error {
 	locks, err := txn.batchPrewriteSecondaryRows(tbl, rowMs)
 	if err != nil {
-		return err
+		return errors.Trace(err)
 	}
 
 	// lock clean
 	if locks != nil && len(locks) > 0 {
 		// try one more time after clean lock successfully
 		for row, lock := range locks {
-			err = txn.tryCleanLockAndPrewrite(tbl, rowMs[row], false, lock, 2)
+			err = txn.tryCleanLockAndPrewrite(tbl, rowMs[row], false, lock, clearLockAndPrewriteTryCount)
 			if err != nil {
-				return err
+				return errors.Trace(err)
 			}
 		}
 	}
@@ -362,34 +367,27 @@ func (txn *Txn) tryCleanLockAndPrewrite(tbl []byte, mutation *rowMutation, conta
 		if curCount >= tryCount {
 			break
 		}
-
 		if curCount > 0 {
 			log.Warnf("tryCleanLockAndPrewrite, tbl:%q, row:%q, curCount:%d", tbl, mutation.row, curCount)
 			time.Sleep(100 * time.Millisecond)
 		}
-
 		err := txn.tryToCleanLock(lock)
 		if err != nil {
-			return err
+			return errors.Trace(err)
 		}
-
 		//TODO: check lock expire
 		lock, err2 := txn.prewriteRow(tbl, mutation, containPrimary)
 		if err2 != nil {
-			return err2
+			return errors.Trace(err2)
 		}
-
 		if lock == nil {
 			break
 		}
-
 		curCount++
 	}
-
 	if lock != nil {
 		return fmt.Errorf("can't clean lock, column:%+v; conflict lock: %+v, lock ts: %d", lock.getColumn(), lock, lock.getTimestamp())
 	}
-
 	return nil
 }
 
@@ -402,7 +400,7 @@ func (txn *Txn) prewriteRowWithLockClean(tbl []byte, mutation *rowMutation, cont
 	if lock != nil {
 		err = txn.tryCleanLockAndPrewrite(tbl, mutation, containPrimary, lock, 2)
 		if err != nil {
-			return err
+			return errors.Trace(err)
 		}
 	}
 	return nil
@@ -432,7 +430,7 @@ func (txn *Txn) prewriteRow(tbl []byte, mutation *rowMutation, containPrimary bo
 func (txn *Txn) prewritePrimary() error {
 	err := txn.prewriteRowWithLockClean(txn.primary.Table, txn.primaryRow, true)
 	if err != nil {
-		return err
+		return errors.Trace(err)
 	}
 	return nil
 }
@@ -454,7 +452,7 @@ func (txn *Txn) prewriteSecondarySync() error {
 			// rollback
 			txn.rollbackRow(txn.primaryRow.tbl, txn.primaryRow)
 			txn.rollbackSecondaryRow(i)
-			return err
+			return errors.Trace(err)
 		}
 	}
 	return nil
@@ -564,7 +562,7 @@ func (txn *Txn) rollbackSecondaryRow(successIndex int) error {
 		r := txn.secondaryRows[i]
 		err := txn.rollbackRow(r.tbl, r)
 		if err != nil {
-			return err
+			return errors.Trace(err)
 		}
 	}
 	return nil
@@ -607,7 +605,7 @@ func (txn *Txn) LockRow(tbl string, rowkey []byte) error {
 	r, err := txn.Get(tbl, g)
 	if err != nil {
 		log.Warnf("get row error, table:%s, row:%q, error:%v", tbl, rowkey, err)
-		return err
+		return errors.Trace(err)
 	}
 
 	if r == nil {

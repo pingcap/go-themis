@@ -3,11 +3,11 @@ package themis
 import (
 	"bytes"
 	"encoding/binary"
-	"errors"
 	"math"
 	"strings"
 
 	"github.com/c4pt0r/go-hbase"
+	"github.com/juju/errors"
 )
 
 type lockCleaner interface {
@@ -56,7 +56,7 @@ func constructLocks(tbl []byte, lockKvs []*hbase.Kv, client themisClient) ([]The
 		}
 		l, err := parseLockFromBytes(kv.Value)
 		if err != nil {
-			return nil, err
+			return nil, errors.Trace(err)
 		}
 		cc := &hbase.ColumnCoordinate{
 			Table:  tbl,
@@ -73,7 +73,7 @@ func constructLocks(tbl []byte, lockKvs []*hbase.Kv, client themisClient) ([]The
 func (cleaner *lockCleanerImpl) cleanPrimaryLock(cc *hbase.ColumnCoordinate, prewriteTs uint64) (uint64, ThemisLock, error) {
 	l, err := cleaner.themisCli.getLockAndErase(cc, prewriteTs)
 	if err != nil {
-		return 0, nil, err
+		return 0, nil, errors.Trace(err)
 	}
 	pl, _ := l.(*PrimaryLock)
 	// if primary lock is nil, means someothers have already committed
@@ -88,7 +88,7 @@ func (cleaner *lockCleanerImpl) cleanPrimaryLock(cc *hbase.ColumnCoordinate, pre
 		g.AddTimeRange(prewriteTs, math.MaxInt64)
 		r, err := cleaner.hbaseCli.Get(string(cc.Table), g)
 		if err != nil {
-			return 0, nil, err
+			return 0, nil, errors.Trace(err)
 		}
 		// may delete by other client
 		if r == nil {
@@ -122,5 +122,5 @@ func (cleaner *lockCleanerImpl) eraseLockAndData(tbl []byte, row []byte, cols []
 	if !ok {
 		panic("delete should ok")
 	}
-	return err
+	return errors.Trace(err)
 }

@@ -1,8 +1,8 @@
 package themis
 
 import (
-	"errors"
 	"fmt"
+	"github.com/juju/errors"
 	"runtime/debug"
 
 	"encoding/binary"
@@ -47,11 +47,11 @@ func (t *themisClientImpl) call(methodName string, tbl, row []byte, req pb.Messa
 	}
 	r, err := t.client.ServiceCall(string(tbl), call)
 	if err != nil {
-		return err
+		return errors.Trace(err)
 	}
 	err = pb.Unmarshal(r.GetValue().GetValue(), resp)
 	if err != nil {
-		return err
+		return errors.Trace(err)
 	}
 	return nil
 }
@@ -59,7 +59,7 @@ func (t *themisClientImpl) call(methodName string, tbl, row []byte, req pb.Messa
 func (t *themisClientImpl) checkAndSetLockIsExpired(lock ThemisLock) (bool, error) {
 	b, err := t.isLockExpired(lock.getColumn().Table, lock.getColumn().Row, lock.getTimestamp())
 	if err != nil {
-		return false, err
+		return false, errors.Trace(err)
 	}
 	lock.setExpired(b)
 	return b, nil
@@ -74,7 +74,7 @@ func (t *themisClientImpl) themisGet(tbl []byte, g *hbase.Get, startTs uint64, i
 	var resp proto.Result
 	err := t.call("themisGet", tbl, g.Row, req, &resp)
 	if err != nil {
-		return nil, err
+		return nil, errors.Trace(err)
 	}
 	return hbase.NewResultRow(&resp), nil
 }
@@ -103,7 +103,7 @@ func (t *themisClientImpl) prewriteRow(tbl []byte, row []byte, mutations []*colu
 	var res ThemisPrewriteResponse
 	err := t.call("prewriteRow", tbl, row, request, &res)
 	if err != nil {
-		return nil, err
+		return nil, errors.Trace(err)
 	}
 	b := res.ThemisPrewriteResult
 	if b == nil {
@@ -121,7 +121,7 @@ func (t *themisClientImpl) prewriteRow(tbl []byte, row []byte, mutations []*colu
 
 	l, err := parseLockFromBytes(b.ExistLock)
 	if err != nil {
-		return nil, err
+		return nil, errors.Trace(err)
 	}
 
 	col := &hbase.ColumnCoordinate{
@@ -146,7 +146,7 @@ func (t *themisClientImpl) isLockExpired(tbl, row []byte, ts uint64) (bool, erro
 	}
 	err := t.call("isLockExpired", tbl, row, req, &res)
 	if err != nil {
-		return false, err
+		return false, errors.Trace(err)
 	}
 	return res.GetExpired(), nil
 }
@@ -161,7 +161,7 @@ func (t *themisClientImpl) getLockAndErase(cc *hbase.ColumnCoordinate, prewriteT
 	var res EraseLockResponse
 	err := t.call("getLockAndErase", cc.Table, cc.Row, req, &res)
 	if err != nil {
-		return nil, err
+		return nil, errors.Trace(err)
 	}
 	b := res.GetLock()
 	if len(b) == 0 {
@@ -186,7 +186,7 @@ func (t *themisClientImpl) commitRow(tbl, row []byte, mutations []*columnMutatio
 	var res ThemisCommitResponse
 	err := t.call("commitRow", tbl, row, req, &res)
 	if err != nil {
-		return err
+		return errors.Trace(err)
 	}
 	ok := res.GetResult()
 	if !ok {
@@ -221,7 +221,7 @@ func (t *themisClientImpl) batchCommitSecondaryRows(tbl []byte, rowMs map[string
 	var res ThemisBatchCommitSecondaryResponse
 	err := t.call("batchCommitSecondaryRows", tbl, lastRow, req, &res)
 	if err != nil {
-		return err
+		return errors.Trace(err)
 	}
 
 	cResult := res.BatchCommitSecondaryResult
@@ -275,7 +275,7 @@ func (t *themisClientImpl) batchPrewriteSecondaryRows(tbl []byte, rowMs map[stri
 	var res ThemisBatchPrewriteSecondaryResponse
 	err := t.call("batchPrewriteSecondaryRows", tbl, lastRow, request, &res)
 	if err != nil {
-		return nil, err
+		return nil, errors.Trace(err)
 	}
 
 	//Perhaps, part row has not in a region, sample : when region split, then need try
@@ -284,7 +284,7 @@ func (t *themisClientImpl) batchPrewriteSecondaryRows(tbl []byte, rowMs map[stri
 		for _, r := range res.RowsNotInRegion {
 			tl, err := t.prewriteSecondaryRow(tbl, r, rowMs[string(r)].mutationList(true), prewriteTs, secondaryLockBytes)
 			if err != nil {
-				return nil, err
+				return nil, errors.Trace(err)
 			}
 
 			if tl != nil {
@@ -298,7 +298,7 @@ func (t *themisClientImpl) batchPrewriteSecondaryRows(tbl []byte, rowMs map[stri
 		for _, pResult := range b {
 			lock, err := judgePerwriteResultRow(pResult, tbl, prewriteTs, pResult.Row)
 			if err != nil {
-				return nil, err
+				return nil, errors.Trace(err)
 			}
 
 			if lock != nil {
@@ -321,7 +321,7 @@ func judgePerwriteResultRow(pResult *ThemisPrewriteResult, tbl []byte, prewriteT
 
 	l, err := parseLockFromBytes(pResult.ExistLock)
 	if err != nil {
-		return nil, err
+		return nil, errors.Trace(err)
 	}
 	col := &hbase.ColumnCoordinate{
 		Table: tbl,
@@ -343,9 +343,11 @@ func toCellFromRowM(col string, cvPair *mutationValuePair) *proto.Cell {
 		Qualifier: c.Qual,
 		Value:     cvPair.value,
 	}
-	if cvPair.typ == hbase.TypePut {
+	if cvPair.typ == hbase.TypePut { // put
 		ret.CellType = proto.CellType_PUT.Enum()
-	} else if cvPair.typ == hbase.TypeDeleteColumn {
+	} else if cvPair.typ == hbase.TypeMinimum { // onlyLock
+		ret.CellType = proto.CellType_MINIMUM.Enum()
+	} else { // delete, themis delete API only support delete column
 		ret.CellType = proto.CellType_DELETE_COLUMN.Enum()
 	}
 	return ret

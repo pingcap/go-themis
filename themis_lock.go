@@ -7,6 +7,7 @@ import (
 
 	"github.com/c4pt0r/go-hbase"
 	"github.com/c4pt0r/go-hbase/iohelper"
+	"github.com/juju/errors"
 )
 
 var (
@@ -52,7 +53,7 @@ func (l *lock) parseField(r iohelper.ByteMultiReader) error {
 	var typ uint8
 	err := binary.Read(r, binary.BigEndian, &typ)
 	if err != nil {
-		return err
+		return errors.Trace(err)
 	}
 	l.typ = hbase.Type(typ)
 
@@ -60,7 +61,7 @@ func (l *lock) parseField(r iohelper.ByteMultiReader) error {
 	var ts int64
 	err = binary.Read(r, binary.BigEndian, &ts)
 	if err != nil {
-		return err
+		return errors.Trace(err)
 	}
 	l.ts = uint64(ts)
 
@@ -77,7 +78,7 @@ func (l *lock) parseField(r iohelper.ByteMultiReader) error {
 	var wallTs int64
 	err = binary.Read(r, binary.BigEndian, &wallTs)
 	if err != nil {
-		return err
+		return errors.Trace(err)
 	}
 	l.wallTs = uint64(wallTs)
 	return nil
@@ -100,7 +101,7 @@ func parseLockFromBytes(b []byte) (ThemisLock, error) {
 	var isPrimary uint8
 	err := binary.Read(buf, binary.BigEndian, &isPrimary)
 	if err != nil {
-		return nil, err
+		return nil, errors.Trace(err)
 	}
 	var ret ThemisLock
 	if isPrimary == 1 {
@@ -110,7 +111,7 @@ func parseLockFromBytes(b []byte) (ThemisLock, error) {
 	}
 	err = ret.parseField(buf)
 	if err != nil {
-		return nil, err
+		return nil, errors.Trace(err)
 	}
 	return ret, nil
 }
