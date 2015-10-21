@@ -35,6 +35,15 @@ func (s *ThemisScanner) setStopRow(stop []byte) {
 	s.scan.StopRow = stop
 }
 
+func (s *ThemisScanner) SetTimeRange(tsRangeFrom uint64, tsRangeTo uint64) {
+	s.scan.TsRangeFrom = tsRangeFrom
+	s.scan.TsRangeTo = tsRangeTo
+}
+
+func (s *ThemisScanner) SetMaxVersions(maxVersions uint32) {
+	s.scan.MaxVersions = maxVersions
+}
+
 func (s *ThemisScanner) createGetFromScan(row []byte) *hbase.Get {
 	return s.scan.CreateGetFromScan(row)
 }

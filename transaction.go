@@ -10,20 +10,22 @@ import (
 	"github.com/ngaut/log"
 	"github.com/pingcap/go-themis/oracle"
 	"github.com/pingcap/go-themis/oracle/oracles"
-	"time"
 )
 
 type TxnConfig struct {
 	ConcurrentPrewriteAndCommit            bool
-	brokenCommitTest                       bool
 	brokenPrewriteSecondaryTest            bool
 	brokenPrewriteSecondaryAndRollbackTest bool
+	brokenCommitPrimaryTest                bool
+	brokenCommitSecondaryTest              bool
 }
 
 var defaultTxnConf = TxnConfig{
-	ConcurrentPrewriteAndCommit: true,
-	brokenCommitTest:            false,
-	brokenPrewriteSecondaryTest: false,
+	ConcurrentPrewriteAndCommit:            true,
+	brokenPrewriteSecondaryTest:            false,
+	brokenPrewriteSecondaryAndRollbackTest: false,
+	brokenCommitPrimaryTest:                false,
+	brokenCommitSecondaryTest:              false,
 }
 
 type Txn struct {
@@ -44,7 +46,13 @@ type Txn struct {
 	conf               TxnConfig
 }
 
-var localOracle = &oracles.LocalOracle{}
+var (
+	localOracle = &oracles.LocalOracle{}
+	// ErrLockNotExpired is used when lock has not expired.
+	ErrLockNotExpired = errors.New("Error: lock has not expired")
+	// ErrSimulated is used when maybe rollback occurs error too.
+	ErrSimulated = errors.New("Error: simulated error")
+)
 
 func NewTxn(c hbase.HBaseClient) *Txn {
 	txn := &Txn{
@@ -148,7 +156,7 @@ func (txn *Txn) Commit() error {
 }
 
 func (txn *Txn) commitSecondary() {
-	if txn.conf.brokenCommitTest {
+	if txn.conf.brokenCommitSecondaryTest {
 		txn.brokenCommitSecondary()
 		return
 	}
@@ -208,6 +216,9 @@ func (txn *Txn) groupByRegion() map[string]map[string]*rowMutation {
 }
 
 func (txn *Txn) commitPrimary() error {
+	if txn.conf.brokenCommitPrimaryTest {
+		return txn.brokenCommitPrimary()
+	}
 	return txn.themisCli.commitRow(txn.primary.Table, txn.primary.Row,
 		txn.primaryRow.mutationList(false),
 		txn.startTs, txn.commitTs, txn.primaryRowOffset)
@@ -337,7 +348,7 @@ func (txn *Txn) tryToCleanLock(lock ThemisLock) error {
 			}
 		}
 	} else {
-		log.Warn("lock is not expired")
+		return ErrLockNotExpired
 	}
 	return nil
 }
@@ -352,41 +363,20 @@ func (txn *Txn) batchPrewriteSecondaryRowsWithLockClean(tbl []byte, rowMs map[st
 	if locks != nil && len(locks) > 0 {
 		// try one more time after clean lock successfully
 		for row, lock := range locks {
-			err = txn.tryCleanLockAndPrewrite(tbl, rowMs[row], false, lock, clearLockAndPrewriteTryCount)
+			err = txn.tryToCleanLock(lock)
 			if err != nil {
 				return errors.Trace(err)
 			}
-		}
-	}
-	return nil
-}
 
-func (txn *Txn) tryCleanLockAndPrewrite(tbl []byte, mutation *rowMutation, containPrimary bool, lock ThemisLock, tryCount int) error {
-	curCount := 0
-	for {
-		if curCount >= tryCount {
-			break
+			//TODO: check lock expire
+			lock, err = txn.prewriteRow(tbl, rowMs[row], false)
+			if err != nil {
+				return errors.Trace(err)
+			}
+			if lock != nil {
+				return fmt.Errorf("can't clean lock, column:%+v; conflict lock: %+v, lock ts: %d", lock.getColumn(), lock, lock.getTimestamp())
+			}
 		}
-		if curCount > 0 {
-			log.Warnf("tryCleanLockAndPrewrite, tbl:%q, row:%q, curCount:%d", tbl, mutation.row, curCount)
-			time.Sleep(100 * time.Millisecond)
-		}
-		err := txn.tryToCleanLock(lock)
-		if err != nil {
-			return errors.Trace(err)
-		}
-		//TODO: check lock expire
-		lock, err2 := txn.prewriteRow(tbl, mutation, containPrimary)
-		if err2 != nil {
-			return errors.Trace(err2)
-		}
-		if lock == nil {
-			break
-		}
-		curCount++
-	}
-	if lock != nil {
-		return fmt.Errorf("can't clean lock, column:%+v; conflict lock: %+v, lock ts: %d", lock.getColumn(), lock, lock.getTimestamp())
 	}
 	return nil
 }
@@ -398,9 +388,17 @@ func (txn *Txn) prewriteRowWithLockClean(tbl []byte, mutation *rowMutation, cont
 	}
 	// lock clean
 	if lock != nil {
-		err = txn.tryCleanLockAndPrewrite(tbl, mutation, containPrimary, lock, 2)
+		err = txn.tryToCleanLock(lock)
 		if err != nil {
 			return errors.Trace(err)
+		}
+		// try one more time after clean lock successfully
+		lock, err = txn.prewriteRow(tbl, mutation, containPrimary)
+		if err != nil {
+			return errors.Trace(err)
+		}
+		if lock != nil {
+			return fmt.Errorf("can't clean lock, column:%+v; conflict lock: %+v, lock ts: %d", lock.getColumn(), lock, lock.getTimestamp())
 		}
 	}
 	return nil
@@ -459,6 +457,13 @@ func (txn *Txn) prewriteSecondarySync() error {
 }
 
 // just for test
+func (txn *Txn) brokenCommitPrimary() error {
+	// do nothing
+	log.Warn("Simulating primary commit failed")
+	return nil
+}
+
+// just for test
 func (txn *Txn) brokenCommitSecondary() {
 	// do nothing
 	log.Warn("Simulating secondary commit failed")
@@ -474,7 +479,7 @@ func (txn *Txn) brokenPrewriteSecondary() error {
 				txn.rollbackSecondaryRow(i)
 			}
 			// maybe rollback occurs error too
-			return errors.New("simulated error")
+			return ErrSimulated
 		}
 		txn.prewriteRowWithLockClean(rm.tbl, rm, false)
 	}

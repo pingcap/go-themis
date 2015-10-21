@@ -341,3 +341,7 @@ func (_m *mockHbaseClient) LocateRegion(table, row []byte, useCache bool) *hbase
 
 	return r0
 }
+
+func (_m *mockHbaseClient) Close() error {
+	return nil
+}

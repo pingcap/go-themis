@@ -11,7 +11,7 @@ const (
 	cfName              string = "cf"
 )
 
-var zk *string = flag.String("zk", "cuiqiu-pc:2222", "hbase zookeeper info")
+var zk *string = flag.String("zk", "localhost", "hbase zookeeper info")
 
 func createHBaseClient() (hbase.HBaseClient, error) {
 	flag.Parse()
