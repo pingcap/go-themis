@@ -58,7 +58,7 @@ func (s *TransactionTestSuit) TestAsyncCommit(c *C) {
 	c.Assert(err, Equals, nil)
 
 	//  wait until lock expired.
-	log.Warn("Wait for lock expired. Sleep 30s...")
+	log.Warn("Wait for lock expired. Sleep 50s...")
 	tick := 50
 	for tick > 0 {
 		time.Sleep(1 * time.Second)
@@ -151,7 +151,7 @@ func (s *TransactionTestSuit) TestPrimaryLockTimeout(c *C) {
 	log.Error(err)
 
 	//  wait until lock expired.
-	log.Warn("Wait for lock expired. Sleep 30s...")
+	log.Warn("Wait for lock expired. Sleep 50s...")
 	tick := 50
 	for tick > 0 {
 		time.Sleep(1 * time.Second)

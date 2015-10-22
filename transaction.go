@@ -48,8 +48,6 @@ type Txn struct {
 
 var (
 	localOracle = &oracles.LocalOracle{}
-	// ErrLockNotExpired is used when lock has not expired.
-	ErrLockNotExpired = errors.New("Error: lock has not expired")
 	// ErrSimulated is used when maybe rollback occurs error too.
 	ErrSimulated = errors.New("Error: simulated error")
 )
@@ -348,7 +346,7 @@ func (txn *Txn) tryToCleanLock(lock ThemisLock) error {
 			}
 		}
 	} else {
-		return ErrLockNotExpired
+		log.Warn("lock is not expired")
 	}
 	return nil
 }
