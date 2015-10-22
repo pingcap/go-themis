@@ -44,12 +44,14 @@ type Txn struct {
 	singleRowTxn       bool
 	secondaryLockBytes []byte
 	conf               TxnConfig
+	lockConfilctCount  uint64
 }
 
 var (
 	localOracle = &oracles.LocalOracle{}
 	// ErrSimulated is used when maybe rollback occurs error too.
 	ErrSimulated = errors.New("Error: simulated error")
+	lockConfilctCount = 0
 )
 
 func NewTxn(c hbase.HBaseClient) *Txn {
@@ -297,7 +299,9 @@ func (txn *Txn) tryToCleanLockAndGetAgain(tbl []byte, g *hbase.Get, lockKvs []*h
 }
 
 func (txn *Txn) tryToCleanLock(lock ThemisLock) error {
-	log.Warn("try to clean lock")
+	lockConfilctCount++
+	txn.lockConfilctCount++
+	log.Warnf("try to clean lock, lockConfilctCount:%d, current txn lockConfilctCount:%d, txn:%v", lockConfilctCount, txn.lockConfilctCount, txn)
 	expired, err := txn.themisCli.checkAndSetLockIsExpired(lock)
 	if err != nil {
 		return errors.Trace(err)
