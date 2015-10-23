@@ -10,6 +10,7 @@ import (
 	"github.com/ngaut/log"
 	"github.com/pingcap/go-themis/oracle"
 	"github.com/pingcap/go-themis/oracle/oracles"
+	"time"
 )
 
 type TxnConfig struct {
@@ -44,14 +45,12 @@ type Txn struct {
 	singleRowTxn       bool
 	secondaryLockBytes []byte
 	conf               TxnConfig
-	lockConfilctCount  uint64
 }
 
 var (
 	localOracle = &oracles.LocalOracle{}
 	// ErrSimulated is used when maybe rollback occurs error too.
 	ErrSimulated = errors.New("Error: simulated error")
-	lockConfilctCount = 0
 )
 
 func NewTxn(c hbase.HBaseClient) *Txn {
@@ -92,6 +91,8 @@ func (txn *Txn) AddConfig(conf TxnConfig) *Txn {
 }
 
 func (txn *Txn) Get(tbl string, g *hbase.Get) (*hbase.ResultRow, error) {
+	defer recordMetrics(metricsGetCounter, metricsGetTimeSum, metricsGetAverageTime, time.Now())
+
 	r, err := txn.themisCli.themisGet([]byte(tbl), g, txn.startTs, false)
 	if err != nil {
 		return nil, errors.Trace(err)
@@ -108,6 +109,8 @@ func (txn *Txn) Get(tbl string, g *hbase.Get) (*hbase.ResultRow, error) {
 }
 
 func (txn *Txn) Put(tbl string, p *hbase.Put) {
+	recordCounterMetrics(metricsPutCounter, 1)
+
 	// add mutation to buffer
 	for _, e := range getEntriesFromPut(p) {
 		txn.mutationCache.addMutation([]byte(tbl), p.Row, e.Column, e.typ, e.value, false)
@@ -115,6 +118,8 @@ func (txn *Txn) Put(tbl string, p *hbase.Put) {
 }
 
 func (txn *Txn) Delete(tbl string, p *hbase.Delete) error {
+	recordCounterMetrics(metricsDeleteCounter, 1)
+
 	entries, err := getEntriesFromDel(p)
 	if err != nil {
 		return errors.Trace(err)
@@ -126,6 +131,8 @@ func (txn *Txn) Delete(tbl string, p *hbase.Delete) error {
 }
 
 func (txn *Txn) Commit() error {
+	defer recordMetrics(metricsTxnCommitCounter, metricsTxnCommitTimeSum, metricsTxnCommitAverageTime, time.Now())
+
 	if txn.mutationCache.getSize() == 0 {
 		// read-only transaction
 		return nil
@@ -168,6 +175,8 @@ func (txn *Txn) commitSecondary() {
 }
 
 func (txn *Txn) commitSecondarySync() {
+	defer recordMetrics(metricsSyncCommitSecondaryCounter, metricsSyncCommitSecondaryTimeSum, metricsSyncCommitSecondaryAverageTime, time.Now())
+
 	log.Info("commit secondary sync")
 	for _, r := range txn.secondaryRows {
 		err := txn.themisCli.commitSecondaryRow(r.tbl, r.row, r.mutationList(false), txn.startTs, txn.commitTs)
@@ -180,6 +189,8 @@ func (txn *Txn) commitSecondarySync() {
 }
 
 func (txn *Txn) batchCommitSecondary() {
+	defer recordMetrics(metricsBatchCommitSecondaryCounter, metricsBatchCommitSecondaryTimeSum, metricsBatchCommitSecondaryAverageTime, time.Now())
+
 	log.Info("batch commit secondary")
 	//will batch commit all rows in a region
 	rsRowMap := txn.groupByRegion()
@@ -216,6 +227,8 @@ func (txn *Txn) groupByRegion() map[string]map[string]*rowMutation {
 }
 
 func (txn *Txn) commitPrimary() error {
+	defer recordMetrics(metricsCommitPrimaryCounter, metricsCommitPrimaryTimeSum, metricsCommitPrimaryAverageTime, time.Now())
+
 	if txn.conf.brokenCommitPrimaryTest {
 		return txn.brokenCommitPrimary()
 	}
@@ -299,9 +312,9 @@ func (txn *Txn) tryToCleanLockAndGetAgain(tbl []byte, g *hbase.Get, lockKvs []*h
 }
 
 func (txn *Txn) tryToCleanLock(lock ThemisLock) error {
-	lockConfilctCount++
-	txn.lockConfilctCount++
-	log.Warnf("try to clean lock, lockConfilctCount:%d, current txn lockConfilctCount:%d, txn:%v", lockConfilctCount, txn.lockConfilctCount, txn)
+	defer recordMetrics(metricsClearLockCounter, metricsClearLockTimeSum, metricsClearLockAverageTime, time.Now())
+
+	log.Warn("try to clean lock")
 	expired, err := txn.themisCli.checkAndSetLockIsExpired(lock)
 	if err != nil {
 		return errors.Trace(err)
@@ -428,6 +441,8 @@ func (txn *Txn) prewriteRow(tbl []byte, mutation *rowMutation, containPrimary bo
 }
 
 func (txn *Txn) prewritePrimary() error {
+	defer recordMetrics(metricsPrewritePrimaryCounter, metricsPrewritePrimaryTimeSum, metricsPrewritePrimaryAverageTime, time.Now())
+
 	err := txn.prewriteRowWithLockClean(txn.primary.Table, txn.primaryRow, true)
 	if err != nil {
 		return errors.Trace(err)
@@ -446,6 +461,8 @@ func (txn *Txn) prewriteSecondary() error {
 }
 
 func (txn *Txn) prewriteSecondarySync() error {
+	defer recordMetrics(metricsSyncPrewriteSecondaryCounter, metricsSyncPrewriteSecondaryTimeSum, metricsSyncPrewriteSecondaryAverageTime, time.Now())
+
 	for i, mu := range txn.secondaryRows {
 		err := txn.prewriteRowWithLockClean(mu.tbl, mu, false)
 		if err != nil {
@@ -489,8 +506,9 @@ func (txn *Txn) brokenPrewriteSecondary() error {
 }
 
 func (txn *Txn) batchPrewriteSecondaries() error {
-	wg := sync.WaitGroup{}
+	defer recordMetrics(metricsBatchPrewriteSecondaryCounter, metricsBatchPrewriteSecondaryTimeSum, metricsBatchPrewriteSecondaryAverageTime, time.Now())
 
+	wg := sync.WaitGroup{}
 	//will batch prewrite all rows in a region
 	rsRowMap := txn.groupByRegion()
 
@@ -555,6 +573,8 @@ func getBatchGroupKey(rInfo *hbase.RegionInfo, tblName string) string {
 }
 
 func (txn *Txn) rollbackRow(tbl []byte, mutation *rowMutation) error {
+	defer recordMetrics(metricsRollbackCounter, metricsRollbackTimeSum, metricsRollbackAverageTime, time.Now())
+
 	l := fmt.Sprintf("\nrolling back %s {\n", string(tbl))
 	for _, v := range mutation.getColumns() {
 		l += fmt.Sprintf("\t%s:%s\n", string(v.Family), string(v.Qual))
@@ -608,6 +628,8 @@ func (txn *Txn) GetStartTS() uint64 {
 }
 
 func (txn *Txn) LockRow(tbl string, rowkey []byte) error {
+	defer recordMetrics(metricsLockRowCounter, metricsLockRowTimeSum, metricsLockRowAverageTime, time.Now())
+
 	g := hbase.NewGet(rowkey)
 	r, err := txn.Get(tbl, g)
 	if err != nil {
