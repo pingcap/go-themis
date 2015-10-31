@@ -141,7 +141,7 @@ func (s *TransactionTestSuit) TestPrimaryLockTimeout(c *C) {
 	tx := NewTxn(s.cli).AddConfig(conf)
 	ts := tx.startTs
 	// simulating broken commit
-	for i := 0; i < 10; i++ {
+	for i := 0; i < 2; i++ {
 		p := hbase.NewPut([]byte(fmt.Sprintf("test_%d", i)))
 		p.AddValue([]byte(cfName), []byte("q"), []byte(fmt.Sprintf("%d", ts)))
 		tx.Put(themisTestTableName, p)
@@ -152,7 +152,7 @@ func (s *TransactionTestSuit) TestPrimaryLockTimeout(c *C) {
 
 	//  wait until lock expired.
 	log.Warn("Wait for lock expired. Sleep...")
-	tick := 30
+	tick := 15
 	for tick > 0 {
 		time.Sleep(1 * time.Second)
 		tick--
@@ -161,7 +161,7 @@ func (s *TransactionTestSuit) TestPrimaryLockTimeout(c *C) {
 
 	// check if locks are cleaned successfully
 	tx = NewTxn(s.cli)
-	for i := 0; i < 10; i++ {
+	for i := 0; i < 2; i++ {
 		g := hbase.NewGet([]byte(fmt.Sprintf("test_%d", i)))
 		r, err := tx.Get(themisTestTableName, g)
 		c.Assert(err, Equals, nil)

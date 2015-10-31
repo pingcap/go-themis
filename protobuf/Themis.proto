@@ -1,4 +1,4 @@
-package proto;
+option go_package = "themis";
 option java_package = "org.apache.hadoop.hbase.themis.cp.generated";
 option java_outer_classname = "ThemisProtos";
 option java_generic_services = true;
@@ -12,6 +12,16 @@ message ThemisGetRequest {
   required Get get = 1;
   required uint64 startTs = 2;
   required bool ignoreLock = 3;
+}
+
+message ThemisBatchGetRequest {
+  repeated Get gets = 1;
+  required uint64 startTs = 2;
+  required bool ignoreLock = 3;
+}
+
+message ThemisBatchGetResponse {
+  repeated Result rs = 1;
 }
 
 message ThemisPrewrite {
@@ -98,6 +108,8 @@ message LockExpiredResponse {
 }
 
 service ThemisService {
+  rpc themisBatchGet(ThemisBatchGetRequest)
+    returns (ThemisBatchGetResponse);
   rpc themisGet(ThemisGetRequest)
     returns (Result);
   rpc prewriteRow(ThemisPrewriteRequest)

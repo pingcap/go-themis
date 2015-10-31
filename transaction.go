@@ -93,8 +93,6 @@ func (txn *Txn) AddConfig(conf TxnConfig) *Txn {
 }
 
 func (txn *Txn) Get(tbl string, g *hbase.Get) (*hbase.ResultRow, error) {
-	defer recordMetrics(metricsGetCounter, metricsGetTimeSum, metricsGetAverageTime, time.Now())
-
 	r, err := txn.themisCli.themisGet([]byte(tbl), g, txn.startTs, false)
 	if err != nil {
 		return nil, errors.Trace(err)
@@ -178,8 +176,6 @@ func (txn *Txn) commitSecondary() {
 }
 
 func (txn *Txn) commitSecondarySync() {
-	defer recordMetrics(metricsSyncCommitSecondaryCounter, metricsSyncCommitSecondaryTimeSum, metricsSyncCommitSecondaryAverageTime, time.Now())
-
 	log.Info("commit secondary sync")
 	for _, r := range txn.secondaryRows {
 		err := txn.themisCli.commitSecondaryRow(r.tbl, r.row, r.mutationList(false), txn.startTs, txn.commitTs)
@@ -192,8 +188,6 @@ func (txn *Txn) commitSecondarySync() {
 }
 
 func (txn *Txn) batchCommitSecondary() {
-	defer recordMetrics(metricsBatchCommitSecondaryCounter, metricsBatchCommitSecondaryTimeSum, metricsBatchCommitSecondaryAverageTime, time.Now())
-
 	log.Info("batch commit secondary")
 	//will batch commit all rows in a region
 	rsRowMap := txn.groupByRegion()
@@ -225,13 +219,10 @@ func (txn *Txn) groupByRegion() map[string]map[string]*rowMutation {
 		}
 		rsRowMap[key][string(rm.row)] = rm
 	}
-
 	return rsRowMap
 }
 
 func (txn *Txn) commitPrimary() error {
-	defer recordMetrics(metricsCommitPrimaryCounter, metricsCommitPrimaryTimeSum, metricsCommitPrimaryAverageTime, time.Now())
-
 	if txn.conf.brokenCommitPrimaryTest {
 		return txn.brokenCommitPrimary()
 	}
@@ -308,6 +299,7 @@ func (txn *Txn) tryToCleanLockAndGetAgain(tbl []byte, g *hbase.Get, lockKvs []*h
 	}
 	// get again, ignore lock
 	r, err := txn.themisCli.themisGet([]byte(tbl), g, txn.startTs, true)
+	log.Info("get again, ignore lock", txn.startTs, r)
 	if err != nil {
 		return nil, errors.Trace(err)
 	}
