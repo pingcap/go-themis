@@ -2,6 +2,8 @@ package themis
 
 import (
 	"flag"
+	"strings"
+
 	"github.com/c4pt0r/go-hbase"
 	"github.com/ngaut/log"
 )
@@ -11,11 +13,21 @@ const (
 	cfName              string = "cf"
 )
 
-var zk *string = flag.String("zk", "localhost", "hbase zookeeper info")
+var (
+	zk = flag.String("zk", "localhost", "hbase zookeeper info")
+)
+
+func getTestZkHosts() []string {
+	zks := strings.Split(*zk, ",")
+	if len(zks) == 0 {
+		log.Fatal("invalid zk")
+	}
+	return zks
+}
 
 func createHBaseClient() (hbase.HBaseClient, error) {
 	flag.Parse()
-	cli, err := hbase.NewClient([]string{*zk}, "/hbase")
+	cli, err := hbase.NewClient(getTestZkHosts(), "/hbase")
 	if err != nil {
 		return nil, err
 	}

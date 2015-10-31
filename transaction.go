@@ -5,12 +5,13 @@ import (
 	"fmt"
 	"sync"
 
+	"time"
+
 	"github.com/c4pt0r/go-hbase"
 	"github.com/juju/errors"
 	"github.com/ngaut/log"
 	"github.com/pingcap/go-themis/oracle"
 	"github.com/pingcap/go-themis/oracle/oracles"
-	"time"
 )
 
 type TxnConfig struct {
@@ -50,7 +51,8 @@ type Txn struct {
 var (
 	localOracle = &oracles.LocalOracle{}
 	// ErrSimulated is used when maybe rollback occurs error too.
-	ErrSimulated = errors.New("Error: simulated error")
+	ErrSimulated      = errors.New("Error: simulated error")
+	lockConfilctCount = 0
 )
 
 func NewTxn(c hbase.HBaseClient) *Txn {
@@ -153,6 +155,7 @@ func (txn *Txn) Commit() error {
 	err = txn.commitPrimary()
 	if err != nil {
 		// commit primary error, rollback
+		log.Error(err)
 		txn.rollbackRow(txn.primaryRow.tbl, txn.primaryRow)
 		txn.rollbackSecondaryRow(len(txn.secondaryRows) - 1)
 		return errors.Trace(err)
@@ -595,8 +598,8 @@ func (txn *Txn) rollbackSecondaryRow(successIndex int) error {
 	return nil
 }
 
-func (txn *Txn) GetScanner(tbl []byte, startKey, endKey []byte) *ThemisScanner {
-	scanner := newThemisScanner(tbl, txn, txn.client)
+func (txn *Txn) GetScanner(tbl []byte, startKey, endKey []byte, batchSize int) *ThemisScanner {
+	scanner := newThemisScanner(tbl, txn, batchSize, txn.client)
 	if startKey != nil {
 		scanner.setStartRow(startKey)
 	}

@@ -2,10 +2,12 @@ package themis
 
 import (
 	"fmt"
-	"github.com/juju/errors"
 	"runtime/debug"
 
+	"github.com/juju/errors"
+
 	"encoding/binary"
+
 	"github.com/c4pt0r/go-hbase"
 	"github.com/c4pt0r/go-hbase/proto"
 	pb "github.com/golang/protobuf/proto"
