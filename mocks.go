@@ -72,6 +72,11 @@ func (_m *mockThemisClient) checkAndSetLockIsExpired(l ThemisLock) (bool, error)
 
 	return r0, r1
 }
+
+func (_m *mockThemisClient) themisBatchGet(tbl []byte, g []*hbase.Get, startTs uint64, ignoreLock bool) ([]*hbase.ResultRow, error) {
+	return nil, nil
+}
+
 func (_m *mockThemisClient) themisGet(tbl []byte, g *hbase.Get, startTs uint64, ignoreLock bool) (*hbase.ResultRow, error) {
 	ret := _m.Called(tbl, g, startTs)
 

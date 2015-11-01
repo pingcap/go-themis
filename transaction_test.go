@@ -17,7 +17,7 @@ var _ = Suite(&TransactionTestSuit{})
 
 func (s *TransactionTestSuit) SetUpSuite(c *C) {
 	s.cli, _ = createHBaseClient()
-	err := createNewTableAndDropOldTable(s.cli, themisTestTableName, cfName)
+	err := createNewTableAndDropOldTable(s.cli, themisTestTableName, cfName, nil)
 	c.Assert(err, Equals, nil)
 }
 
@@ -168,7 +168,20 @@ func (s *TransactionTestSuit) TestPrimaryLockTimeout(c *C) {
 		c.Assert(string(r.SortedColumns[0].Value) != fmt.Sprintf("%d", ts), Equals, true)
 		log.Info(r, err)
 	}
+}
 
+func checkCommitSuccess(s *TransactionTestSuit, c *C, row []byte) {
+	tx := NewTxn(s.cli)
+	colMap := make(map[string]string)
+	colMap["#p:"+cfName+"#q"] = ""
+	colMap[cfName+":q"] = ""
+	r, err := tx.client.Get(themisTestTableName, hbase.NewGet(row))
+	c.Assert(err, Equals, nil)
+	c.Assert(2, Equals, len(r.Columns))
+	for _, v := range r.Columns {
+		_, exist := colMap[string(v.Family)+":"+string(v.Qual)]
+		c.Assert(exist, Equals, true)
+	}
 }
 
 func (s *TransactionTestSuit) TestLockRow(c *C) {
@@ -204,19 +217,38 @@ func (s *TransactionTestSuit) TestLockRow(c *C) {
 	tx.commitTs = tx.startTs + 1
 	tx.commitPrimary()
 	checkCommitSuccess(s, c, row)
-
 }
 
-func checkCommitSuccess(s *TransactionTestSuit, c *C, row []byte) {
+func (s *TransactionTestSuit) TestBatchGet(c *C) {
+	batchGetTestTbl := "batch_get_test"
+	err := createNewTableAndDropOldTable(s.cli, batchGetTestTbl, cfName, [][]byte{
+		// split in middle
+		[]byte("batch_test_5"),
+	})
+	defer dropTable(s.cli, batchGetTestTbl)
+	// prepare data
 	tx := NewTxn(s.cli)
-	colMap := make(map[string]string)
-	colMap["#p:"+cfName+"#q"] = ""
-	colMap[cfName+":q"] = ""
-	r, err := tx.client.Get(themisTestTableName, hbase.NewGet(row))
-	c.Assert(err, Equals, nil)
-	c.Assert(2, Equals, len(r.Columns))
-	for _, v := range r.Columns {
-		_, exist := colMap[string(v.Family)+":"+string(v.Qual)]
-		c.Assert(exist, Equals, true)
+	for i := 0; i < 10; i++ {
+		p := hbase.NewPut([]byte(fmt.Sprintf("batch_test_%d", i)))
+		p.AddValue([]byte(cfName), []byte("q"), []byte("v"))
+		tx.Put(batchGetTestTbl, p)
 	}
+	err = tx.Commit()
+	c.Assert(err, IsNil)
+
+	// batch get
+	var gets []*hbase.Get
+	for i := 0; i < 10; i++ {
+		g := hbase.NewGet([]byte(fmt.Sprintf("batch_test_%d", i)))
+		g.AddColumn([]byte(cfName), []byte("q"))
+		gets = append(gets, g)
+	}
+	for i := 5; i < 10; i++ {
+		g := hbase.NewGet([]byte(fmt.Sprintf("batch_test_no_such_row_%d", i)))
+		g.AddColumn([]byte(cfName), []byte("q"))
+		gets = append(gets, g)
+	}
+	tx = NewTxn(s.cli)
+	_, err = tx.BatchGet(batchGetTestTbl, gets)
+	c.Assert(err, IsNil)
 }

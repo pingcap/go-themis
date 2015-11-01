@@ -15,7 +15,7 @@ type ThemisScanner struct {
 }
 
 func newThemisScanner(tbl []byte, txn *Txn, batchSize int, c hbase.HBaseClient) *ThemisScanner {
-	s := hbase.NewScan(c, tbl, batchSize)
+	s := hbase.NewScan(tbl, batchSize, c)
 	// add start ts
 	b := bytes.NewBuffer(nil)
 	binary.Write(b, binary.BigEndian, txn.startTs)

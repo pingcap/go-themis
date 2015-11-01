@@ -92,6 +92,17 @@ func (txn *Txn) AddConfig(conf TxnConfig) *Txn {
 	return txn
 }
 
+func (txn *Txn) BatchGet(tbl string, gets []*hbase.Get) ([]*hbase.ResultRow, error) {
+	results, err := txn.themisCli.themisBatchGet([]byte(tbl), gets, txn.startTs, false)
+	if err != nil {
+		return nil, errors.Trace(err)
+	}
+	for _, r := range results {
+		log.Info(string(r.Row), string(r.SortedColumns[0].Value))
+	}
+	return nil, nil
+}
+
 func (txn *Txn) Get(tbl string, g *hbase.Get) (*hbase.ResultRow, error) {
 	r, err := txn.themisCli.themisGet([]byte(tbl), g, txn.startTs, false)
 	if err != nil {

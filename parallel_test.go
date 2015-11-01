@@ -19,7 +19,7 @@ func (s *ParallelTestSuit) TestParallelHbaseCall(c *C) {
 	cli, err := createHBaseClient()
 	c.Assert(err, Equals, nil)
 
-	err = createNewTableAndDropOldTable(cli, themisTestTableName, cfName)
+	err = createNewTableAndDropOldTable(cli, themisTestTableName, cfName, nil)
 	c.Assert(err, Equals, nil)
 
 	wg := sync.WaitGroup{}

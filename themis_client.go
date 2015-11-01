@@ -18,6 +18,7 @@ import (
 type themisClient interface {
 	checkAndSetLockIsExpired(l ThemisLock) (bool, error)
 	themisGet(tbl []byte, g *hbase.Get, startTs uint64, ignoreLock bool) (*hbase.ResultRow, error)
+	themisBatchGet(tbl []byte, gets []*hbase.Get, startTs uint64, ignoreLock bool) ([]*hbase.ResultRow, error)
 	prewriteRow(tbl []byte, row []byte, mutations []*columnMutation, prewriteTs uint64, primaryLockBytes []byte, secondaryLockBytes []byte, primaryOffset int) (ThemisLock, error)
 	isLockExpired(tbl, row []byte, ts uint64) (bool, error)
 	getLockAndErase(cc *hbase.ColumnCoordinate, prewriteTs uint64) (ThemisLock, error)
@@ -79,6 +80,28 @@ func (t *themisClientImpl) themisGet(tbl []byte, g *hbase.Get, startTs uint64, i
 		return nil, errors.Trace(err)
 	}
 	return hbase.NewResultRow(&resp), nil
+}
+
+func (t *themisClientImpl) themisBatchGet(tbl []byte, gets []*hbase.Get, startTs uint64, ignoreLock bool) ([]*hbase.ResultRow, error) {
+	var protoGets []*proto.Get
+	for _, g := range gets {
+		protoGets = append(protoGets, g.ToProto().(*proto.Get))
+	}
+	req := &ThemisBatchGetRequest{
+		Gets:       protoGets,
+		StartTs:    pb.Uint64(startTs),
+		IgnoreLock: pb.Bool(ignoreLock),
+	}
+	var resp ThemisBatchGetResponse
+	err := t.call("themisBatchGet", tbl, gets[0].Row, req, &resp)
+	if err != nil {
+		return nil, errors.Trace(err)
+	}
+	var results []*hbase.ResultRow
+	for _, rs := range resp.GetRs() {
+		results = append(results, hbase.NewResultRow(rs))
+	}
+	return results, nil
 }
 
 func (t *themisClientImpl) prewriteRow(tbl []byte, row []byte, mutations []*columnMutation, prewriteTs uint64, primaryLockBytes []byte, secondaryLockBytes []byte, primaryOffset int) (ThemisLock, error) {
