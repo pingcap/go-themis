@@ -6,6 +6,7 @@ import (
 
 	"github.com/c4pt0r/go-hbase"
 	"github.com/c4pt0r/go-hbase/proto"
+	"github.com/juju/errors"
 )
 
 type mutationValuePair struct {
@@ -22,20 +23,17 @@ type columnMutation struct {
 	*mutationValuePair
 }
 
-func getEntriesFromDel(p *hbase.Delete) []*columnMutation {
+func getEntriesFromDel(p *hbase.Delete) ([]*columnMutation, error) {
+	errMsg := "must set at least one column for themis delete"
+	if len(p.FamilyQuals) == 0 {
+		return nil, errors.New(errMsg)
+	}
+
 	var ret []*columnMutation
 	for f, _ := range p.Families {
 		quilifiers := p.FamilyQuals[f]
 		if len(quilifiers) == 0 {
-			mutation := &columnMutation{
-				Column: &hbase.Column{
-					Family: []byte(f),
-				},
-				mutationValuePair: &mutationValuePair{
-					typ: hbase.TypeDelete,
-				},
-			}
-			ret = append(ret, mutation)
+			return nil, errors.New(errMsg)
 		}
 		for q, _ := range quilifiers {
 			mutation := &columnMutation{
@@ -44,13 +42,13 @@ func getEntriesFromDel(p *hbase.Delete) []*columnMutation {
 					Qual:   []byte(q),
 				},
 				mutationValuePair: &mutationValuePair{
-					typ: hbase.TypeDelete,
+					typ: hbase.TypeDeleteColumn,
 				},
 			}
 			ret = append(ret, mutation)
 		}
 	}
-	return ret
+	return ret, nil
 }
 
 func getEntriesFromPut(p *hbase.Put) []*columnMutation {
@@ -80,10 +78,12 @@ func (cm *columnMutation) toCell() *proto.Cell {
 		Qualifier: cm.Qual,
 		Value:     cm.value,
 	}
-	if cm.typ == hbase.TypePut {
+	if cm.typ == hbase.TypePut { // put
 		ret.CellType = proto.CellType_PUT.Enum()
-	} else {
-		ret.CellType = proto.CellType_DELETE.Enum()
+	} else if cm.typ == hbase.TypeMinimum { // onlyLock
+		ret.CellType = proto.CellType_MINIMUM.Enum()
+	} else { // delete, themis delete API only support delete column
+		ret.CellType = proto.CellType_DELETE_COLUMN.Enum()
 	}
 	return ret
 }
@@ -125,7 +125,14 @@ func newRowMutation(tbl, row []byte) *rowMutation {
 	}
 }
 
-func (r *rowMutation) addMutation(c *hbase.Column, typ hbase.Type, val []byte) {
+func (r *rowMutation) addMutation(c *hbase.Column, typ hbase.Type, val []byte, onlyLock bool) {
+	// 3 scene: put, delete, onlyLock
+	// if it is onlyLock scene, then has not data modify, when has contained the qualifier, can't replace exist value,
+	// becuase put or delete operation has add mutation
+	if onlyLock && r.mutations[c.String()] != nil {
+		return
+	}
+
 	r.mutations[c.String()] = &mutationValuePair{
 		typ:   typ,
 		value: val,
@@ -167,7 +174,7 @@ func newColumnMutationCache() *columnMutationCache {
 	}
 }
 
-func (c *columnMutationCache) addMutation(tbl []byte, row []byte, col *hbase.Column, t hbase.Type, v []byte) {
+func (c *columnMutationCache) addMutation(tbl []byte, row []byte, col *hbase.Column, t hbase.Type, v []byte, onlyLock bool) {
 	tblRowMutations, ok := c.mutations[string(tbl)]
 	if !ok {
 		// create table mutation map
@@ -181,7 +188,7 @@ func (c *columnMutationCache) addMutation(tbl []byte, row []byte, col *hbase.Col
 		rowMutations = newRowMutation(tbl, row)
 		tblRowMutations[string(row)] = rowMutations
 	}
-	rowMutations.addMutation(col, t, v)
+	rowMutations.addMutation(col, t, v, onlyLock)
 }
 
 func (c *columnMutationCache) getMutation(cc *hbase.ColumnCoordinate) *mutationValuePair {

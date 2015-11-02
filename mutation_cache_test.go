@@ -16,9 +16,9 @@ func (s *MutationCacheTestSuit) TestMutationCache(c *C) {
 	cache := newColumnMutationCache()
 	row := []byte("r1")
 	col := &hbase.Column{[]byte("f1"), []byte("q1")}
-	cache.addMutation([]byte("tbl"), row, col, hbase.TypePut, []byte("test"))
-	cache.addMutation([]byte("tbl"), row, col, hbase.TypeDelete, []byte("test"))
-	cache.addMutation([]byte("tbl"), row, col, hbase.TypePut, []byte("test"))
+	cache.addMutation([]byte("tbl"), row, col, hbase.TypePut, []byte("test"), false)
+	cache.addMutation([]byte("tbl"), row, col, hbase.TypeDeleteColumn, []byte("test"), false)
+	cache.addMutation([]byte("tbl"), row, col, hbase.TypePut, []byte("test"), false)
 
 	cc := &hbase.ColumnCoordinate{
 		Table: []byte("tbl"),

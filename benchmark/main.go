@@ -15,6 +15,7 @@ import (
 	"github.com/c4pt0r/go-hbase"
 	"github.com/ngaut/log"
 	"github.com/pingcap/go-themis"
+	"github.com/rcrowley/go-metrics"
 )
 
 var c hbase.HBaseClient
@@ -51,6 +52,7 @@ func dropTable(tblName string) {
 }
 
 func main() {
+	themis.RegMetircs(metrics.NewRegistry())
 	runtime.GOMAXPROCS(runtime.NumCPU())
 	log.SetLevelByString("error")
 	dropTable(tblName1)

@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"sync"
 
+	"time"
+
 	"github.com/c4pt0r/go-hbase"
 	"github.com/juju/errors"
 	"github.com/ngaut/log"
@@ -14,15 +16,18 @@ import (
 
 type TxnConfig struct {
 	ConcurrentPrewriteAndCommit            bool
-	brokenCommitTest                       bool
 	brokenPrewriteSecondaryTest            bool
 	brokenPrewriteSecondaryAndRollbackTest bool
+	brokenCommitPrimaryTest                bool
+	brokenCommitSecondaryTest              bool
 }
 
 var defaultTxnConf = TxnConfig{
-	ConcurrentPrewriteAndCommit: true,
-	brokenCommitTest:            false,
-	brokenPrewriteSecondaryTest: false,
+	ConcurrentPrewriteAndCommit:            true,
+	brokenPrewriteSecondaryTest:            false,
+	brokenPrewriteSecondaryAndRollbackTest: false,
+	brokenCommitPrimaryTest:                false,
+	brokenCommitSecondaryTest:              false,
 }
 
 type Txn struct {
@@ -43,7 +48,12 @@ type Txn struct {
 	conf               TxnConfig
 }
 
-var localOracle = &oracles.LocalOracle{}
+var (
+	localOracle = &oracles.LocalOracle{}
+	// ErrSimulated is used when maybe rollback occurs error too.
+	ErrSimulated      = errors.New("Error: simulated error")
+	lockConfilctCount = 0
+)
 
 func NewTxn(c hbase.HBaseClient) *Txn {
 	txn := &Txn{
@@ -82,36 +92,58 @@ func (txn *Txn) AddConfig(conf TxnConfig) *Txn {
 	return txn
 }
 
+func (txn *Txn) BatchGet(tbl string, gets []*hbase.Get) ([]*hbase.ResultRow, error) {
+	results, err := txn.themisCli.themisBatchGet([]byte(tbl), gets, txn.startTs, false)
+	if err != nil {
+		return nil, errors.Trace(err)
+	}
+	for _, r := range results {
+		log.Info(string(r.Row), string(r.SortedColumns[0].Value))
+	}
+	return nil, nil
+}
+
 func (txn *Txn) Get(tbl string, g *hbase.Get) (*hbase.ResultRow, error) {
 	r, err := txn.themisCli.themisGet([]byte(tbl), g, txn.startTs, false)
 	if err != nil {
-		return nil, err
+		return nil, errors.Trace(err)
 	}
 	// contain locks, try to clean and get again
 	if r != nil && isLockResult(r) {
 		log.Warning("get lock, try to clean and get again")
 		r, err = txn.tryToCleanLockAndGetAgain([]byte(tbl), g, r.SortedColumns)
 		if err != nil {
-			return nil, err
+			return nil, errors.Trace(err)
 		}
 	}
 	return r, nil
 }
 
 func (txn *Txn) Put(tbl string, p *hbase.Put) {
+	recordCounterMetrics(metricsPutCounter, 1)
+
 	// add mutation to buffer
 	for _, e := range getEntriesFromPut(p) {
-		txn.mutationCache.addMutation([]byte(tbl), p.Row, e.Column, e.typ, e.value)
+		txn.mutationCache.addMutation([]byte(tbl), p.Row, e.Column, e.typ, e.value, false)
 	}
 }
 
-func (txn *Txn) Delete(tbl string, p *hbase.Delete) {
-	for _, e := range getEntriesFromDel(p) {
-		txn.mutationCache.addMutation([]byte(tbl), p.Row, e.Column, e.typ, e.value)
+func (txn *Txn) Delete(tbl string, p *hbase.Delete) error {
+	recordCounterMetrics(metricsDeleteCounter, 1)
+
+	entries, err := getEntriesFromDel(p)
+	if err != nil {
+		return errors.Trace(err)
 	}
+	for _, e := range entries {
+		txn.mutationCache.addMutation([]byte(tbl), p.Row, e.Column, e.typ, e.value, false)
+	}
+	return nil
 }
 
 func (txn *Txn) Commit() error {
+	defer recordMetrics(metricsTxnCommitCounter, metricsTxnCommitTimeSum, metricsTxnCommitAverageTime, time.Now())
+
 	if txn.mutationCache.getSize() == 0 {
 		// read-only transaction
 		return nil
@@ -120,21 +152,22 @@ func (txn *Txn) Commit() error {
 	txn.selectPrepareAndSecondary()
 	err := txn.prewritePrimary()
 	if err != nil {
-		return err
+		return errors.Trace(err)
 	}
 
 	err = txn.prewriteSecondary()
 	if err != nil {
-		return err
+		return errors.Trace(err)
 	}
 
 	txn.commitTs = txn.oracle.GetTimestamp()
 	err = txn.commitPrimary()
 	if err != nil {
 		// commit primary error, rollback
+		log.Error(err)
 		txn.rollbackRow(txn.primaryRow.tbl, txn.primaryRow)
 		txn.rollbackSecondaryRow(len(txn.secondaryRows) - 1)
-		return err
+		return errors.Trace(err)
 	}
 
 	txn.commitSecondary()
@@ -142,7 +175,7 @@ func (txn *Txn) Commit() error {
 }
 
 func (txn *Txn) commitSecondary() {
-	if txn.conf.brokenCommitTest {
+	if txn.conf.brokenCommitSecondaryTest {
 		txn.brokenCommitSecondary()
 		return
 	}
@@ -197,11 +230,13 @@ func (txn *Txn) groupByRegion() map[string]map[string]*rowMutation {
 		}
 		rsRowMap[key][string(rm.row)] = rm
 	}
-
 	return rsRowMap
 }
 
 func (txn *Txn) commitPrimary() error {
+	if txn.conf.brokenCommitPrimaryTest {
+		return txn.brokenCommitPrimary()
+	}
 	return txn.themisCli.commitRow(txn.primary.Table, txn.primary.Row,
 		txn.primaryRow.mutationList(false),
 		txn.startTs, txn.commitTs, txn.primaryRowOffset)
@@ -270,22 +305,25 @@ func (txn *Txn) tryToCleanLockAndGetAgain(tbl []byte, g *hbase.Get, lockKvs []*h
 	for _, lock := range locks {
 		err := txn.tryToCleanLock(lock)
 		if err != nil {
-			return nil, err
+			return nil, errors.Trace(err)
 		}
 	}
 	// get again, ignore lock
 	r, err := txn.themisCli.themisGet([]byte(tbl), g, txn.startTs, true)
+	log.Info("get again, ignore lock", txn.startTs, r)
 	if err != nil {
-		return nil, err
+		return nil, errors.Trace(err)
 	}
 	return r, nil
 }
 
 func (txn *Txn) tryToCleanLock(lock ThemisLock) error {
+	defer recordMetrics(metricsClearLockCounter, metricsClearLockTimeSum, metricsClearLockAverageTime, time.Now())
+
 	log.Warn("try to clean lock")
 	expired, err := txn.themisCli.checkAndSetLockIsExpired(lock)
 	if err != nil {
-		return err
+		return errors.Trace(err)
 	}
 	// only clean expired lock
 	if expired {
@@ -294,7 +332,7 @@ func (txn *Txn) tryToCleanLock(lock ThemisLock) error {
 		pl := lock.getPrimaryLock()
 		commitTs, cleanedLock, err := txn.lockCleaner.cleanPrimaryLock(pl.getColumn(), pl.getTimestamp())
 		if err != nil {
-			return err
+			return errors.Trace(err)
 		}
 		//
 		if cleanedLock != nil {
@@ -312,7 +350,7 @@ func (txn *Txn) tryToCleanLock(lock ThemisLock) error {
 				// dirty data
 				err = txn.lockCleaner.eraseLockAndData(cc.Table, cc.Row, []hbase.Column{cc.Column}, pl.getTimestamp())
 				if err != nil {
-					return err
+					return errors.Trace(err)
 				}
 			} else {
 				// primary row is committed, so we must commit other
@@ -326,7 +364,7 @@ func (txn *Txn) tryToCleanLock(lock ThemisLock) error {
 				err = txn.themisCli.commitSecondaryRow(cc.Table, cc.Row,
 					[]*columnMutation{mutation}, pl.getTimestamp(), commitTs)
 				if err != nil {
-					return err
+					return errors.Trace(err)
 				}
 			}
 		}
@@ -339,7 +377,7 @@ func (txn *Txn) tryToCleanLock(lock ThemisLock) error {
 func (txn *Txn) batchPrewriteSecondaryRowsWithLockClean(tbl []byte, rowMs map[string]*rowMutation) error {
 	locks, err := txn.batchPrewriteSecondaryRows(tbl, rowMs)
 	if err != nil {
-		return err
+		return errors.Trace(err)
 	}
 
 	// lock clean
@@ -348,13 +386,13 @@ func (txn *Txn) batchPrewriteSecondaryRowsWithLockClean(tbl []byte, rowMs map[st
 		for row, lock := range locks {
 			err = txn.tryToCleanLock(lock)
 			if err != nil {
-				return err
+				return errors.Trace(err)
 			}
 
 			//TODO: check lock expire
-			lock, err2 := txn.prewriteRow(tbl, rowMs[row], false)
-			if err2 != nil {
-				return err2
+			lock, err = txn.prewriteRow(tbl, rowMs[row], false)
+			if err != nil {
+				return errors.Trace(err)
 			}
 			if lock != nil {
 				return fmt.Errorf("can't clean lock, column:%+v; conflict lock: %+v, lock ts: %d", lock.getColumn(), lock, lock.getTimestamp())
@@ -373,12 +411,12 @@ func (txn *Txn) prewriteRowWithLockClean(tbl []byte, mutation *rowMutation, cont
 	if lock != nil {
 		err = txn.tryToCleanLock(lock)
 		if err != nil {
-			return err
+			return errors.Trace(err)
 		}
 		// try one more time after clean lock successfully
 		lock, err = txn.prewriteRow(tbl, mutation, containPrimary)
 		if err != nil {
-			return err
+			return errors.Trace(err)
 		}
 		if lock != nil {
 			return fmt.Errorf("can't clean lock, column:%+v; conflict lock: %+v, lock ts: %d", lock.getColumn(), lock, lock.getTimestamp())
@@ -409,9 +447,11 @@ func (txn *Txn) prewriteRow(tbl []byte, mutation *rowMutation, containPrimary bo
 }
 
 func (txn *Txn) prewritePrimary() error {
+	defer recordMetrics(metricsPrewritePrimaryCounter, metricsPrewritePrimaryTimeSum, metricsPrewritePrimaryAverageTime, time.Now())
+
 	err := txn.prewriteRowWithLockClean(txn.primary.Table, txn.primaryRow, true)
 	if err != nil {
-		return err
+		return errors.Trace(err)
 	}
 	return nil
 }
@@ -427,15 +467,24 @@ func (txn *Txn) prewriteSecondary() error {
 }
 
 func (txn *Txn) prewriteSecondarySync() error {
+	defer recordMetrics(metricsSyncPrewriteSecondaryCounter, metricsSyncPrewriteSecondaryTimeSum, metricsSyncPrewriteSecondaryAverageTime, time.Now())
+
 	for i, mu := range txn.secondaryRows {
 		err := txn.prewriteRowWithLockClean(mu.tbl, mu, false)
 		if err != nil {
 			// rollback
 			txn.rollbackRow(txn.primaryRow.tbl, txn.primaryRow)
 			txn.rollbackSecondaryRow(i)
-			return err
+			return errors.Trace(err)
 		}
 	}
+	return nil
+}
+
+// just for test
+func (txn *Txn) brokenCommitPrimary() error {
+	// do nothing
+	log.Warn("Simulating primary commit failed")
 	return nil
 }
 
@@ -455,7 +504,7 @@ func (txn *Txn) brokenPrewriteSecondary() error {
 				txn.rollbackSecondaryRow(i)
 			}
 			// maybe rollback occurs error too
-			return errors.New("simulated error")
+			return ErrSimulated
 		}
 		txn.prewriteRowWithLockClean(rm.tbl, rm, false)
 	}
@@ -463,8 +512,9 @@ func (txn *Txn) brokenPrewriteSecondary() error {
 }
 
 func (txn *Txn) batchPrewriteSecondaries() error {
-	wg := sync.WaitGroup{}
+	defer recordMetrics(metricsBatchPrewriteSecondaryCounter, metricsBatchPrewriteSecondaryTimeSum, metricsBatchPrewriteSecondaryAverageTime, time.Now())
 
+	wg := sync.WaitGroup{}
 	//will batch prewrite all rows in a region
 	rsRowMap := txn.groupByRegion()
 
@@ -506,6 +556,8 @@ func (txn *Txn) batchPrewriteSecondaries() error {
 				break L
 			}
 		}
+
+		return <-errChan
 	}
 	return nil
 }
@@ -527,6 +579,8 @@ func getBatchGroupKey(rInfo *hbase.RegionInfo, tblName string) string {
 }
 
 func (txn *Txn) rollbackRow(tbl []byte, mutation *rowMutation) error {
+	defer recordMetrics(metricsRollbackCounter, metricsRollbackTimeSum, metricsRollbackAverageTime, time.Now())
+
 	l := fmt.Sprintf("\nrolling back %s {\n", string(tbl))
 	for _, v := range mutation.getColumns() {
 		l += fmt.Sprintf("\t%s:%s\n", string(v.Family), string(v.Qual))
@@ -541,14 +595,14 @@ func (txn *Txn) rollbackSecondaryRow(successIndex int) error {
 		r := txn.secondaryRows[i]
 		err := txn.rollbackRow(r.tbl, r)
 		if err != nil {
-			return err
+			return errors.Trace(err)
 		}
 	}
 	return nil
 }
 
-func (txn *Txn) GetScanner(tbl []byte, startKey, endKey []byte) *ThemisScanner {
-	scanner := newThemisScanner(tbl, txn, txn.client)
+func (txn *Txn) GetScanner(tbl []byte, startKey, endKey []byte, batchSize int) *ThemisScanner {
+	scanner := newThemisScanner(tbl, txn, batchSize, txn.client)
 	if startKey != nil {
 		scanner.setStartRow(startKey)
 	}
@@ -569,4 +623,35 @@ func (txn *Txn) Release() {
 
 func (txn *Txn) String() string {
 	return fmt.Sprintf("%d", txn.startTs)
+}
+
+func (txn *Txn) GetCommitTS() uint64 {
+	return txn.commitTs
+}
+
+func (txn *Txn) GetStartTS() uint64 {
+	return txn.startTs
+}
+
+func (txn *Txn) LockRow(tbl string, rowkey []byte) error {
+	defer recordMetrics(metricsLockRowCounter, metricsLockRowTimeSum, metricsLockRowAverageTime, time.Now())
+
+	g := hbase.NewGet(rowkey)
+	r, err := txn.Get(tbl, g)
+	if err != nil {
+		log.Warnf("get row error, table:%s, row:%q, error:%v", tbl, rowkey, err)
+		return errors.Trace(err)
+	}
+
+	if r == nil {
+		log.Warnf("has not data to lock, table:%s, row:%q", tbl, rowkey)
+		return nil
+	}
+
+	for _, v := range r.Columns {
+		//if cache has data, then don't replace
+		txn.mutationCache.addMutation([]byte(tbl), rowkey, &v.Column, hbase.TypeMinimum, nil, true)
+	}
+
+	return nil
 }

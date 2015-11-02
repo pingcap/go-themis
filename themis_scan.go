@@ -14,8 +14,8 @@ type ThemisScanner struct {
 	tbl  []byte
 }
 
-func newThemisScanner(tbl []byte, txn *Txn, c hbase.HBaseClient) *ThemisScanner {
-	s := hbase.NewScan(tbl, c)
+func newThemisScanner(tbl []byte, txn *Txn, batchSize int, c hbase.HBaseClient) *ThemisScanner {
+	s := hbase.NewScan(tbl, batchSize, c)
 	// add start ts
 	b := bytes.NewBuffer(nil)
 	binary.Write(b, binary.BigEndian, txn.startTs)
@@ -33,6 +33,15 @@ func (s *ThemisScanner) setStartRow(start []byte) {
 
 func (s *ThemisScanner) setStopRow(stop []byte) {
 	s.scan.StopRow = stop
+}
+
+func (s *ThemisScanner) SetTimeRange(tsRangeFrom uint64, tsRangeTo uint64) {
+	s.scan.TsRangeFrom = tsRangeFrom
+	s.scan.TsRangeTo = tsRangeTo
+}
+
+func (s *ThemisScanner) SetMaxVersions(maxVersions uint32) {
+	s.scan.MaxVersions = maxVersions
 }
 
 func (s *ThemisScanner) createGetFromScan(row []byte) *hbase.Get {

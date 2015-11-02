@@ -6,6 +6,7 @@ import (
 
 	"github.com/c4pt0r/go-hbase"
 	"github.com/c4pt0r/go-hbase/iohelper"
+	"github.com/juju/errors"
 )
 
 type PrimaryLock struct {
@@ -69,14 +70,14 @@ func (l *PrimaryLock) parseField(buf iohelper.ByteMultiReader) error {
 	var sz int32
 	err := binary.Read(buf, binary.BigEndian, &sz)
 	if err != nil {
-		return err
+		return errors.Trace(err)
 	}
 	for i := 0; i < int(sz); i++ {
 		c := &hbase.ColumnCoordinate{}
 		c.ParseField(buf)
 		b, err := buf.ReadByte()
 		if err != nil {
-			return err
+			return errors.Trace(err)
 		}
 		t := hbase.Type(b)
 		l.addSecondaryColumn(c, t)
