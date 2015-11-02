@@ -1,7 +1,7 @@
 package themis
 
 import (
-	"github.com/c4pt0r/go-hbase"
+	"github.com/pingcap/go-hbase"
 	. "gopkg.in/check.v1"
 )
 

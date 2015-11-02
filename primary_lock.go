@@ -4,9 +4,9 @@ import (
 	"bytes"
 	"encoding/binary"
 
-	"github.com/c4pt0r/go-hbase"
-	"github.com/c4pt0r/go-hbase/iohelper"
 	"github.com/juju/errors"
+	"github.com/pingcap/go-hbase"
+	"github.com/pingcap/go-hbase/iohelper"
 )
 
 type PrimaryLock struct {

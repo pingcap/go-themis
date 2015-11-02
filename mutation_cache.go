@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/c4pt0r/go-hbase"
-	"github.com/c4pt0r/go-hbase/proto"
 	"github.com/juju/errors"
+	"github.com/pingcap/go-hbase"
+	"github.com/pingcap/go-hbase/proto"
 )
 
 type mutationValuePair struct {

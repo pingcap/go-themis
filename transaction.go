@@ -7,9 +7,9 @@ import (
 
 	"time"
 
-	"github.com/c4pt0r/go-hbase"
 	"github.com/juju/errors"
 	"github.com/ngaut/log"
+	"github.com/pingcap/go-hbase"
 	"github.com/pingcap/go-themis/oracle"
 	"github.com/pingcap/go-themis/oracle/oracles"
 )
@@ -97,10 +97,31 @@ func (txn *Txn) BatchGet(tbl string, gets []*hbase.Get) ([]*hbase.ResultRow, err
 	if err != nil {
 		return nil, errors.Trace(err)
 	}
+	var ret []*hbase.ResultRow
+	hasLock := false
 	for _, r := range results {
-		log.Info(string(r.Row), string(r.SortedColumns[0].Value))
+		// if this row is locked, try clean lock and get again
+		if isLockResult(r) {
+			hasLock = true
+			log.Warning("BatchGet gets lock, try to clean and get again")
+			err = txn.constructLockAndClean([]byte(tbl), r.SortedColumns)
+			if err != nil {
+				// TODO if it's a conflict error, it means this lock
+				// isn't expired, maybe we can retry or return partial results.
+				return nil, errors.Trace(err)
+			}
+		}
+		// it's OK, because themisBatchGet doesn't return nil value.
+		ret = append(ret, r)
 	}
-	return nil, nil
+	if hasLock {
+		// after we cleaned locks, try to get again.
+		ret, err = txn.themisCli.themisBatchGet([]byte(tbl), gets, txn.startTs, true)
+		if err != nil {
+			return nil, errors.Trace(err)
+		}
+	}
+	return ret, nil
 }
 
 func (txn *Txn) Get(tbl string, g *hbase.Get) (*hbase.ResultRow, error) {
@@ -299,14 +320,25 @@ func (txn *Txn) constructPrimaryLock() *PrimaryLock {
 	return l
 }
 
-func (txn *Txn) tryToCleanLockAndGetAgain(tbl []byte, g *hbase.Get, lockKvs []*hbase.Kv) (*hbase.ResultRow, error) {
-	// try to clean locks
+func (txn *Txn) constructLockAndClean(tbl []byte, lockKvs []*hbase.Kv) error {
 	locks, err := constructLocks([]byte(tbl), lockKvs, txn.themisCli)
+	if err != nil {
+		return errors.Trace(err)
+	}
 	for _, lock := range locks {
 		err := txn.tryToCleanLock(lock)
 		if err != nil {
-			return nil, errors.Trace(err)
+			return errors.Trace(err)
 		}
+	}
+	return nil
+}
+
+func (txn *Txn) tryToCleanLockAndGetAgain(tbl []byte, g *hbase.Get, lockKvs []*hbase.Kv) (*hbase.ResultRow, error) {
+	// try to clean locks
+	err := txn.constructLockAndClean(tbl, lockKvs)
+	if err != nil {
+		return nil, errors.Trace(err)
 	}
 	// get again, ignore lock
 	r, err := txn.themisCli.themisGet([]byte(tbl), g, txn.startTs, true)

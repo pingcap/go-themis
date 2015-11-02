@@ -2,10 +2,11 @@ package themis
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
-	"github.com/c4pt0r/go-hbase"
 	"github.com/ngaut/log"
+	"github.com/pingcap/go-hbase"
 	. "gopkg.in/check.v1"
 )
 
@@ -152,7 +153,7 @@ func (s *TransactionTestSuit) TestPrimaryLockTimeout(c *C) {
 
 	//  wait until lock expired.
 	log.Warn("Wait for lock expired. Sleep...")
-	tick := 15
+	tick := 30
 	for tick > 0 {
 		time.Sleep(1 * time.Second)
 		tick--
@@ -219,6 +220,10 @@ func (s *TransactionTestSuit) TestLockRow(c *C) {
 	checkCommitSuccess(s, c, row)
 }
 
+func isWrongRegionErr(err error) bool {
+	return strings.Contains(err.Error(), "org.apache.hadoop.hbase.regionserver.WrongRegionException")
+}
+
 func (s *TransactionTestSuit) TestBatchGet(c *C) {
 	batchGetTestTbl := "batch_get_test"
 	err := createNewTableAndDropOldTable(s.cli, batchGetTestTbl, cfName, [][]byte{
@@ -250,5 +255,58 @@ func (s *TransactionTestSuit) TestBatchGet(c *C) {
 	}
 	tx = NewTxn(s.cli)
 	_, err = tx.BatchGet(batchGetTestTbl, gets)
+	c.Assert(isWrongRegionErr(err), Equals, true)
+
+	gets = nil
+	for i := 0; i < 5; i++ {
+		g := hbase.NewGet([]byte(fmt.Sprintf("batch_test_%d", i)))
+		g.AddColumn([]byte(cfName), []byte("q"))
+		gets = append(gets, g)
+	}
+	tx = NewTxn(s.cli)
+	rs, err := tx.BatchGet(batchGetTestTbl, gets)
 	c.Assert(err, IsNil)
+	c.Assert(len(rs), Equals, 5)
+}
+
+func (s *TransactionTestSuit) TestBatchGetWithLocks(c *C) {
+	// simulating locks
+	conf := TxnConfig{
+		brokenCommitSecondaryTest: true,
+	}
+	tx := NewTxn(s.cli).AddConfig(conf)
+	ts := tx.startTs
+	// simulating broken commit
+	for i := 0; i < 10; i++ {
+		p := hbase.NewPut([]byte(fmt.Sprintf("batch_test_with_lock_%d", i)))
+		p.AddValue([]byte(cfName), []byte("q"), []byte(fmt.Sprintf("%d", ts)))
+		tx.Put(themisTestTableName, p)
+	}
+	tx.Commit()
+
+	tx = NewTxn(s.cli)
+
+	var gets []*hbase.Get
+	for i := 0; i < 10; i++ {
+		g := hbase.NewGet([]byte(fmt.Sprintf("batch_test_with_lock_%d", i)))
+		g.AddColumn([]byte(cfName), []byte("q"))
+		gets = append(gets, g)
+	}
+	rs, err := tx.BatchGet(themisTestTableName, gets)
+	c.Assert(err, IsNil)
+	// only gets primary row
+	c.Assert(len(rs), Equals, 1)
+
+	// wait until lock expired
+	log.Info("wait until lock expires")
+	cnt := 30
+	for cnt > 0 {
+		cnt--
+		log.Info("remain", cnt)
+		time.Sleep(1 * time.Second)
+	}
+	rs, err = tx.BatchGet(themisTestTableName, gets)
+	c.Assert(err, IsNil)
+	// only gets primary row
+	c.Assert(len(rs), Equals, 10)
 }

@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"sync"
 
-	"github.com/c4pt0r/go-hbase"
+	"github.com/pingcap/go-hbase"
 	"github.com/ngaut/log"
 	. "gopkg.in/check.v1"
 )

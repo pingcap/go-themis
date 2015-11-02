@@ -14,8 +14,8 @@ import (
 
 	"flag"
 
-	"github.com/c4pt0r/go-hbase"
 	"github.com/ngaut/log"
+	"github.com/pingcap/go-hbase"
 	"github.com/pingcap/go-themis"
 )
 

@@ -4,8 +4,8 @@ import (
 	"flag"
 	"strings"
 
-	"github.com/c4pt0r/go-hbase"
 	"github.com/ngaut/log"
+	"github.com/pingcap/go-hbase"
 )
 
 const (

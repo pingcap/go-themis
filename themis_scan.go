@@ -4,8 +4,8 @@ import (
 	"bytes"
 	"encoding/binary"
 
-	"github.com/c4pt0r/go-hbase"
 	"github.com/ngaut/log"
+	"github.com/pingcap/go-hbase"
 )
 
 type ThemisScanner struct {

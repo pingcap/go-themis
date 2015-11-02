@@ -8,10 +8,10 @@ import (
 
 	"encoding/binary"
 
-	"github.com/c4pt0r/go-hbase"
-	"github.com/c4pt0r/go-hbase/proto"
 	pb "github.com/golang/protobuf/proto"
 	"github.com/ngaut/log"
+	"github.com/pingcap/go-hbase"
+	"github.com/pingcap/go-hbase/proto"
 	"github.com/pingcap/tidb/kv"
 )
 

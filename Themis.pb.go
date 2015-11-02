@@ -31,11 +31,14 @@ It has these top-level messages:
 */
 package themis
 
-import proto "github.com/golang/protobuf/proto"
-import fmt "fmt"
-import math "math"
-import Client "github.com/c4pt0r/go-hbase/proto"
-import Cell "github.com/c4pt0r/go-hbase/proto"
+import (
+	"fmt"
+	"math"
+
+	"github.com/c4pt0r/proto"
+	Cell "github.com/pingcap/go-hbase/proto"
+	Client "github.com/pingcap/go-hbase/proto"
+)
 
 // Reference imports to suppress errors if they are not otherwise used.
 var _ = proto.Marshal

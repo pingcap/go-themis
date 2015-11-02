@@ -1,8 +1,8 @@
 package themis
 
 import (
-	"github.com/c4pt0r/go-hbase"
-	"github.com/c4pt0r/go-hbase/proto"
+	"github.com/pingcap/go-hbase"
+	"github.com/pingcap/go-hbase/proto"
 	"github.com/stretchr/testify/mock"
 )
 
@@ -312,6 +312,7 @@ func (_m *mockHbaseClient) Delete(tbl string, d *hbase.Delete) (bool, error) {
 
 	return r0, r1
 }
+
 func (_m *mockHbaseClient) ServiceCall(table string, call *hbase.CoprocessorServiceCall) (*proto.CoprocessorServiceResponse, error) {
 	ret := _m.Called(table, call)
 
