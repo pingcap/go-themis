@@ -15,7 +15,9 @@ import (
 )
 
 type TxnConfig struct {
-	ConcurrentPrewriteAndCommit            bool
+	ConcurrentPrewriteAndCommit bool
+	WaitSecondaryCommit         bool
+	// options below is for debugging and testing
 	brokenPrewriteSecondaryTest            bool
 	brokenPrewriteSecondaryAndRollbackTest bool
 	brokenCommitPrimaryTest                bool
@@ -24,6 +26,7 @@ type TxnConfig struct {
 
 var defaultTxnConf = TxnConfig{
 	ConcurrentPrewriteAndCommit:            true,
+	WaitSecondaryCommit:                    true,
 	brokenPrewriteSecondaryTest:            false,
 	brokenPrewriteSecondaryAndRollbackTest: false,
 	brokenCommitPrimaryTest:                false,
@@ -201,7 +204,7 @@ func (txn *Txn) commitSecondary() {
 		return
 	}
 	if txn.conf.ConcurrentPrewriteAndCommit {
-		txn.batchCommitSecondary()
+		txn.batchCommitSecondary(txn.conf.WaitSecondaryCommit)
 	} else {
 		txn.commitSecondarySync()
 	}
@@ -219,7 +222,7 @@ func (txn *Txn) commitSecondarySync() {
 	}
 }
 
-func (txn *Txn) batchCommitSecondary() {
+func (txn *Txn) batchCommitSecondary(wait bool) {
 	log.Info("batch commit secondary")
 	//will batch commit all rows in a region
 	rsRowMap := txn.groupByRegion()
@@ -238,8 +241,9 @@ func (txn *Txn) batchCommitSecondary() {
 			}
 		}(firstRowM.tbl, regionRowMap)
 	}
-
-	wg.Wait()
+	if wait {
+		wg.Wait()
+	}
 }
 
 func (txn *Txn) groupByRegion() map[string]map[string]*rowMutation {
@@ -350,8 +354,46 @@ func (txn *Txn) tryToCleanLockAndGetAgain(tbl []byte, g *hbase.Get, lockKvs []*h
 }
 
 func (txn *Txn) tryToCleanLock(lock ThemisLock) error {
-	defer recordMetrics(metricsClearLockCounter, metricsClearLockTimeSum, metricsClearLockAverageTime, time.Now())
-
+	// if it's secondary lock, first we'll check if its primary lock has been released.
+	if lock.isPrimary() == false {
+		// get primary lock
+		pl := lock.getPrimaryLock()
+		// get lock column and row info
+		cc := pl.getColumn()
+		get := hbase.NewGet(cc.Row)
+		get.AddStringColumn(string(LockFamilyName), string(cc.Family)+"#"+string(cc.Qual))
+		// check if lock exists
+		rs, err := txn.client.Get(string(cc.Table), get)
+		if err != nil {
+			return errors.Trace(err)
+		}
+		// primary lock has been released
+		if rs == nil {
+			log.Info("primary lock not found")
+			// primary row is committed, commit this row
+			commitTs, err := txn.lockCleaner.getCommitTS(cc, pl.getTimestamp())
+			if err != nil {
+				return errors.Trace(err)
+			}
+			if commitTs > 0 {
+				// if this transction has been committed
+				log.Info("txn has been committed, ts:", commitTs, "prewriteTs:", pl.getTimestamp())
+				mutation := &columnMutation{
+					Column: &cc.Column,
+					mutationValuePair: &mutationValuePair{
+						typ: lock.(*SecondaryLock).typ,
+					},
+				}
+				err = txn.themisCli.commitSecondaryRow(cc.Table, cc.Row,
+					[]*columnMutation{mutation}, pl.getTimestamp(), commitTs)
+				if err != nil {
+					return errors.Trace(err)
+				}
+				return nil
+			}
+		}
+	}
+	// checkd
 	log.Warn("try to clean lock")
 	expired, err := txn.themisCli.checkAndSetLockIsExpired(lock)
 	if err != nil {

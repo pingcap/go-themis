@@ -310,3 +310,26 @@ func (s *TransactionTestSuit) TestBatchGetWithLocks(c *C) {
 	// only gets primary row
 	c.Assert(len(rs), Equals, 10)
 }
+
+func (s *TransactionTestSuit) TestAsyncSecondaryCommit(c *C) {
+	conf := TxnConfig{
+		WaitSecondaryCommit:         false,
+		ConcurrentPrewriteAndCommit: true,
+		brokenCommitSecondaryTest:   true,
+	}
+	tx := NewTxn(s.cli).AddConfig(conf)
+	for i := 0; i < 10; i++ {
+		p := hbase.NewPut([]byte(fmt.Sprintf("async_commit_test_%d", i)))
+		p.AddValue([]byte(cfName), []byte("q"), []byte(fmt.Sprintf("%d", tx.startTs)))
+		tx.Put(themisTestTableName, p)
+	}
+	tx.Commit()
+
+	tx = NewTxn(s.cli).AddConfig(conf)
+	for i := 0; i < 10; i++ {
+		g := hbase.NewGet([]byte(fmt.Sprintf("async_commit_test_%d", i)))
+		rs, err := tx.Get(themisTestTableName, g)
+		c.Assert(err, IsNil)
+		log.Info(rs)
+	}
+}

@@ -13,6 +13,7 @@ import (
 type lockCleaner interface {
 	cleanPrimaryLock(cc *hbase.ColumnCoordinate, prewriteTs uint64) (uint64, ThemisLock, error)
 	eraseLockAndData(tbl []byte, row []byte, cols []hbase.Column, ts uint64) error
+	getCommitTS(cc *hbase.ColumnCoordinate, prewriteTs uint64) (uint64, error)
 }
 
 var _ lockCleaner = (*lockCleanerImpl)(nil)
@@ -70,6 +71,35 @@ func constructLocks(tbl []byte, lockKvs []*hbase.Kv, client themisClient) ([]The
 	return locks, nil
 }
 
+func (cleaner *lockCleanerImpl) getCommitTS(cc *hbase.ColumnCoordinate, prewriteTs uint64) (uint64, error) {
+	g := hbase.NewGet(cc.Row)
+	// add put write column
+	qual := string(cc.Family) + "#" + string(cc.Qual)
+	g.AddStringColumn("#p", qual)
+	// add del write column
+	g.AddStringColumn("#d", qual)
+	// time range => [ours startTs, +Inf)
+	g.AddTimeRange(prewriteTs, math.MaxInt64)
+	r, err := cleaner.hbaseCli.Get(string(cc.Table), g)
+	if err != nil {
+		return 0, errors.Trace(err)
+	}
+	// may delete by other client
+	if r == nil {
+		return 0, nil
+	}
+	for _, kv := range r.SortedColumns {
+		var ts uint64
+		binary.Read(bytes.NewBuffer(kv.Value), binary.BigEndian, &ts)
+		if ts == prewriteTs {
+			// get this commit's commitTs
+			return kv.Ts, nil
+		}
+	}
+	// no such transction
+	return 0, nil
+}
+
 func (cleaner *lockCleanerImpl) cleanPrimaryLock(cc *hbase.ColumnCoordinate, prewriteTs uint64) (uint64, ThemisLock, error) {
 	l, err := cleaner.themisCli.getLockAndErase(cc, prewriteTs)
 	if err != nil {
@@ -78,30 +108,11 @@ func (cleaner *lockCleanerImpl) cleanPrimaryLock(cc *hbase.ColumnCoordinate, pre
 	pl, _ := l.(*PrimaryLock)
 	// if primary lock is nil, means someothers have already committed
 	if pl == nil {
-		g := hbase.NewGet(cc.Row)
-		// add put write column
-		qual := string(cc.Family) + "#" + string(cc.Qual)
-		g.AddStringColumn("#p", qual)
-		// add del write column
-		g.AddStringColumn("#d", qual)
-		// time range => [ours startTs, +Inf)
-		g.AddTimeRange(prewriteTs, math.MaxInt64)
-		r, err := cleaner.hbaseCli.Get(string(cc.Table), g)
+		commitTs, err := cleaner.getCommitTS(cc, prewriteTs)
 		if err != nil {
 			return 0, nil, errors.Trace(err)
 		}
-		// may delete by other client
-		if r == nil {
-			return 0, nil, nil
-		}
-		for _, kv := range r.SortedColumns {
-			var ts uint64
-			binary.Read(bytes.NewBuffer(kv.Value), binary.BigEndian, &ts)
-			if ts == prewriteTs {
-				// get this commit's commitTs
-				return kv.Ts, nil, nil
-			}
-		}
+		return commitTs, nil, nil
 	} else {
 		return 0, pl, nil
 	}
