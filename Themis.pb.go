@@ -3,7 +3,7 @@
 // DO NOT EDIT!
 
 /*
-Package themis is a generated protocol buffer package.
+Package Themis is a generated protocol buffer package.
 
 It is generated from these files:
 	Themis.proto
@@ -31,14 +31,11 @@ It has these top-level messages:
 */
 package themis
 
-import (
-	"fmt"
-	"math"
-
-	"github.com/c4pt0r/proto"
-	Cell "github.com/pingcap/go-hbase/proto"
-	Client "github.com/pingcap/go-hbase/proto"
-)
+import proto "github.com/golang/protobuf/proto"
+import fmt "fmt"
+import math "math"
+import Client "github.com/pingcap/go-hbase/proto"
+import Cell "github.com/pingcap/go-hbase/proto"
 
 // Reference imports to suppress errors if they are not otherwise used.
 var _ = proto.Marshal
@@ -254,11 +251,11 @@ func (m *ThemisBatchPrewriteSecondaryResponse) GetRowsNotInRegion() [][]byte {
 }
 
 type ThemisPrewriteResult struct {
-	NewerWriteTs     []byte `protobuf:"bytes,1,req,name=newerWriteTs" json:"newerWriteTs,omitempty"`
+	NewerWriteTs     *int64 `protobuf:"varint,1,req,name=newerWriteTs" json:"newerWriteTs,omitempty"`
 	ExistLock        []byte `protobuf:"bytes,2,req,name=existLock" json:"existLock,omitempty"`
 	Family           []byte `protobuf:"bytes,3,req,name=family" json:"family,omitempty"`
 	Qualifier        []byte `protobuf:"bytes,4,req,name=qualifier" json:"qualifier,omitempty"`
-	LockExpired      []byte `protobuf:"bytes,5,req,name=lockExpired" json:"lockExpired,omitempty"`
+	LockExpired      *bool  `protobuf:"varint,5,req,name=lockExpired" json:"lockExpired,omitempty"`
 	Row              []byte `protobuf:"bytes,6,req,name=row" json:"row,omitempty"`
 	XXX_unrecognized []byte `json:"-"`
 }
@@ -267,11 +264,11 @@ func (m *ThemisPrewriteResult) Reset()         { *m = ThemisPrewriteResult{} }
 func (m *ThemisPrewriteResult) String() string { return proto.CompactTextString(m) }
 func (*ThemisPrewriteResult) ProtoMessage()    {}
 
-func (m *ThemisPrewriteResult) GetNewerWriteTs() []byte {
-	if m != nil {
-		return m.NewerWriteTs
+func (m *ThemisPrewriteResult) GetNewerWriteTs() int64 {
+	if m != nil && m.NewerWriteTs != nil {
+		return *m.NewerWriteTs
 	}
-	return nil
+	return 0
 }
 
 func (m *ThemisPrewriteResult) GetExistLock() []byte {
@@ -295,11 +292,11 @@ func (m *ThemisPrewriteResult) GetQualifier() []byte {
 	return nil
 }
 
-func (m *ThemisPrewriteResult) GetLockExpired() []byte {
-	if m != nil {
-		return m.LockExpired
+func (m *ThemisPrewriteResult) GetLockExpired() bool {
+	if m != nil && m.LockExpired != nil {
+		return *m.LockExpired
 	}
-	return nil
+	return false
 }
 
 func (m *ThemisPrewriteResult) GetRow() []byte {

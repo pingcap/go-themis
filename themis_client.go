@@ -6,8 +6,6 @@ import (
 
 	"github.com/juju/errors"
 
-	"encoding/binary"
-
 	pb "github.com/golang/protobuf/proto"
 	"github.com/ngaut/log"
 	"github.com/pingcap/go-hbase"
@@ -138,7 +136,7 @@ func (t *themisClientImpl) prewriteRow(tbl []byte, row []byte, mutations []*colu
 	}
 	// Oops, someone else have already locked this row.
 
-	commitTs := binary.BigEndian.Uint64(b.NewerWriteTs)
+	commitTs := b.GetNewerWriteTs()
 	if commitTs != 0 {
 		log.Errorf("write conflict, encounter write with larger timestamp than prewriteTs=%d, commitTs=%d, row=%s", prewriteTs, commitTs, string(row))
 		return nil, kv.ErrLockConflict
@@ -337,7 +335,7 @@ func (t *themisClientImpl) batchPrewriteSecondaryRows(tbl []byte, rowMs map[stri
 
 func judgePerwriteResultRow(pResult *ThemisPrewriteResult, tbl []byte, prewriteTs uint64, row []byte) (ThemisLock, error) {
 	// Oops, someone else have already locked this row.
-	newerTs := binary.BigEndian.Uint64(pResult.NewerWriteTs)
+	newerTs := pResult.GetNewerWriteTs()
 	if newerTs != 0 {
 		log.Errorf("write conflict, encounter write with larger timestamp than prewriteTs=%d, row=%s, conflict: newerTs=%d, row=%q",
 			prewriteTs, string(row), newerTs, pResult.Row)
