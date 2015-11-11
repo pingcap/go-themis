@@ -26,7 +26,7 @@ type TxnConfig struct {
 
 var defaultTxnConf = TxnConfig{
 	ConcurrentPrewriteAndCommit:            true,
-	WaitSecondaryCommit:                    true,
+	WaitSecondaryCommit:                    false,
 	brokenPrewriteSecondaryTest:            false,
 	brokenPrewriteSecondaryAndRollbackTest: false,
 	brokenCommitPrimaryTest:                false,
@@ -243,6 +243,8 @@ func (txn *Txn) batchCommitSecondary(wait bool) {
 	}
 	if wait {
 		wg.Wait()
+	} else {
+		log.Info("fast return")
 	}
 }
 
@@ -378,6 +380,8 @@ func (txn *Txn) tryToCleanLock(lock ThemisLock) error {
 			if commitTs > 0 {
 				// if this transction has been committed
 				log.Info("txn has been committed, ts:", commitTs, "prewriteTs:", pl.getTimestamp())
+				// commit secondary row
+				cc = lock.getColumn()
 				mutation := &columnMutation{
 					Column: &cc.Column,
 					mutationValuePair: &mutationValuePair{
