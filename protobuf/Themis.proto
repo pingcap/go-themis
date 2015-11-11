@@ -26,14 +26,14 @@ message ThemisBatchGetResponse {
 message ThemisPrewrite {
   required bytes row = 1;
   repeated Cell  mutations = 2;
-  required uint64 prewriteTs = 3;
-  required bytes secondaryLock = 4;
-  required bytes primaryLock = 5;
-  required int32 primaryIndex = 6;
 }
 
 message ThemisPrewriteRequest {
   required ThemisPrewrite themisPrewrite = 1;
+  required uint64 prewriteTs = 2;
+  required bytes secondaryLock = 3;
+  required bytes primaryLock = 4;
+  required int32 primaryIndex = 5;
 }
 
 message ThemisPrewriteResponse {
@@ -42,6 +42,8 @@ message ThemisPrewriteResponse {
 
 message ThemisBatchPrewriteSecondaryRequest {
   repeated ThemisPrewrite themisPrewrite = 1;
+  required uint64 prewriteTs = 2;
+  required bytes secondaryLock = 3;
 }
 
 message ThemisBatchPrewriteSecondaryResponse {

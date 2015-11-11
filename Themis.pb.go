@@ -125,10 +125,6 @@ func (m *ThemisBatchGetResponse) GetRs() []*Client.Result {
 type ThemisPrewrite struct {
 	Row              []byte       `protobuf:"bytes,1,req,name=row" json:"row,omitempty"`
 	Mutations        []*Cell.Cell `protobuf:"bytes,2,rep,name=mutations" json:"mutations,omitempty"`
-	PrewriteTs       *uint64      `protobuf:"varint,3,req,name=prewriteTs" json:"prewriteTs,omitempty"`
-	SecondaryLock    []byte       `protobuf:"bytes,4,req,name=secondaryLock" json:"secondaryLock,omitempty"`
-	PrimaryLock      []byte       `protobuf:"bytes,5,req,name=primaryLock" json:"primaryLock,omitempty"`
-	PrimaryIndex     *int32       `protobuf:"varint,6,req,name=primaryIndex" json:"primaryIndex,omitempty"`
 	XXX_unrecognized []byte       `json:"-"`
 }
 
@@ -150,36 +146,12 @@ func (m *ThemisPrewrite) GetMutations() []*Cell.Cell {
 	return nil
 }
 
-func (m *ThemisPrewrite) GetPrewriteTs() uint64 {
-	if m != nil && m.PrewriteTs != nil {
-		return *m.PrewriteTs
-	}
-	return 0
-}
-
-func (m *ThemisPrewrite) GetSecondaryLock() []byte {
-	if m != nil {
-		return m.SecondaryLock
-	}
-	return nil
-}
-
-func (m *ThemisPrewrite) GetPrimaryLock() []byte {
-	if m != nil {
-		return m.PrimaryLock
-	}
-	return nil
-}
-
-func (m *ThemisPrewrite) GetPrimaryIndex() int32 {
-	if m != nil && m.PrimaryIndex != nil {
-		return *m.PrimaryIndex
-	}
-	return 0
-}
-
 type ThemisPrewriteRequest struct {
 	ThemisPrewrite   *ThemisPrewrite `protobuf:"bytes,1,req,name=themisPrewrite" json:"themisPrewrite,omitempty"`
+	PrewriteTs       *uint64         `protobuf:"varint,2,req,name=prewriteTs" json:"prewriteTs,omitempty"`
+	SecondaryLock    []byte          `protobuf:"bytes,3,req,name=secondaryLock" json:"secondaryLock,omitempty"`
+	PrimaryLock      []byte          `protobuf:"bytes,4,req,name=primaryLock" json:"primaryLock,omitempty"`
+	PrimaryIndex     *int32          `protobuf:"varint,5,req,name=primaryIndex" json:"primaryIndex,omitempty"`
 	XXX_unrecognized []byte          `json:"-"`
 }
 
@@ -192,6 +164,34 @@ func (m *ThemisPrewriteRequest) GetThemisPrewrite() *ThemisPrewrite {
 		return m.ThemisPrewrite
 	}
 	return nil
+}
+
+func (m *ThemisPrewriteRequest) GetPrewriteTs() uint64 {
+	if m != nil && m.PrewriteTs != nil {
+		return *m.PrewriteTs
+	}
+	return 0
+}
+
+func (m *ThemisPrewriteRequest) GetSecondaryLock() []byte {
+	if m != nil {
+		return m.SecondaryLock
+	}
+	return nil
+}
+
+func (m *ThemisPrewriteRequest) GetPrimaryLock() []byte {
+	if m != nil {
+		return m.PrimaryLock
+	}
+	return nil
+}
+
+func (m *ThemisPrewriteRequest) GetPrimaryIndex() int32 {
+	if m != nil && m.PrimaryIndex != nil {
+		return *m.PrimaryIndex
+	}
+	return 0
 }
 
 type ThemisPrewriteResponse struct {
@@ -212,6 +212,8 @@ func (m *ThemisPrewriteResponse) GetThemisPrewriteResult() *ThemisPrewriteResult
 
 type ThemisBatchPrewriteSecondaryRequest struct {
 	ThemisPrewrite   []*ThemisPrewrite `protobuf:"bytes,1,rep,name=themisPrewrite" json:"themisPrewrite,omitempty"`
+	PrewriteTs       *uint64           `protobuf:"varint,2,req,name=prewriteTs" json:"prewriteTs,omitempty"`
+	SecondaryLock    []byte            `protobuf:"bytes,3,req,name=secondaryLock" json:"secondaryLock,omitempty"`
 	XXX_unrecognized []byte            `json:"-"`
 }
 
@@ -222,6 +224,20 @@ func (*ThemisBatchPrewriteSecondaryRequest) ProtoMessage()    {}
 func (m *ThemisBatchPrewriteSecondaryRequest) GetThemisPrewrite() []*ThemisPrewrite {
 	if m != nil {
 		return m.ThemisPrewrite
+	}
+	return nil
+}
+
+func (m *ThemisBatchPrewriteSecondaryRequest) GetPrewriteTs() uint64 {
+	if m != nil && m.PrewriteTs != nil {
+		return *m.PrewriteTs
+	}
+	return 0
+}
+
+func (m *ThemisBatchPrewriteSecondaryRequest) GetSecondaryLock() []byte {
+	if m != nil {
+		return m.SecondaryLock
 	}
 	return nil
 }

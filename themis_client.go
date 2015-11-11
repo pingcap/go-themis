@@ -104,19 +104,20 @@ func (t *themisClientImpl) themisBatchGet(tbl []byte, gets []*hbase.Get, startTs
 
 func (t *themisClientImpl) prewriteRow(tbl []byte, row []byte, mutations []*columnMutation, prewriteTs uint64, primaryLockBytes []byte, secondaryLockBytes []byte, primaryOffset int) (ThemisLock, error) {
 	var cells []*proto.Cell
-	request := &ThemisPrewriteRequest{}
-	request.ThemisPrewrite = &ThemisPrewrite{
-		Row:           row,
+	request := &ThemisPrewriteRequest{
 		PrewriteTs:    pb.Uint64(prewriteTs),
 		PrimaryLock:   primaryLockBytes,
 		SecondaryLock: secondaryLockBytes,
 		PrimaryIndex:  pb.Int(primaryOffset),
 	}
+	request.ThemisPrewrite = &ThemisPrewrite{
+		Row: row,
+	}
 	if primaryLockBytes == nil {
-		request.ThemisPrewrite.PrimaryLock = []byte("")
+		request.PrimaryLock = []byte("")
 	}
 	if secondaryLockBytes == nil {
-		request.ThemisPrewrite.SecondaryLock = []byte("")
+		request.SecondaryLock = []byte("")
 	}
 	for _, m := range mutations {
 		cells = append(cells, m.toCell())
@@ -270,7 +271,10 @@ func (t *themisClientImpl) prewriteSecondaryRow(tbl, row []byte,
 }
 
 func (t *themisClientImpl) batchPrewriteSecondaryRows(tbl []byte, rowMs map[string]*rowMutation, prewriteTs uint64, secondaryLockBytes []byte) (map[string]ThemisLock, error) {
-	request := &ThemisBatchPrewriteSecondaryRequest{}
+	request := &ThemisBatchPrewriteSecondaryRequest{
+		PrewriteTs:    pb.Uint64(prewriteTs),
+		SecondaryLock: secondaryLockBytes,
+	}
 	request.ThemisPrewrite = make([]*ThemisPrewrite, len(rowMs))
 
 	if secondaryLockBytes == nil {
@@ -284,12 +288,8 @@ func (t *themisClientImpl) batchPrewriteSecondaryRows(tbl []byte, rowMs map[stri
 			cells = append(cells, toCellFromRowM(col, m))
 		}
 		request.ThemisPrewrite[i] = &ThemisPrewrite{
-			Row:           []byte(row),
-			Mutations:     cells,
-			PrewriteTs:    pb.Uint64(prewriteTs),
-			PrimaryLock:   []byte(""),
-			SecondaryLock: secondaryLockBytes,
-			PrimaryIndex:  pb.Int(-1),
+			Row:       []byte(row),
+			Mutations: cells,
 		}
 		i++
 		lastRow = []byte(row)
