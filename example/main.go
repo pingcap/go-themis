@@ -41,16 +41,14 @@ func createHBaseClient(zk string) error {
 }
 
 func createTable() {
-	if !c.TableExists(tblName) {
-		// create new hbase table for store
-		t := hbase.NewTableDesciptor(hbase.NewTableNameWithDefaultNS(tblName))
-		cf := hbase.NewColumnFamilyDescriptor("cf")
-		cf.AddStrAddr("THEMIS_ENABLE", "true")
-		t.AddColumnDesc(cf)
-		err := c.CreateTable(t, nil)
-		if err != nil {
-			log.Fatal(err)
-		}
+	// create new hbase table for store
+	t := hbase.NewTableDesciptor(hbase.NewTableNameWithDefaultNS(tblName))
+	cf := hbase.NewColumnFamilyDescriptor("cf")
+	cf.AddStrAddr("THEMIS_ENABLE", "true")
+	t.AddColumnDesc(cf)
+	err := c.CreateTable(t, nil)
+	if err != nil {
+		log.Fatal(err)
 	}
 }
 
