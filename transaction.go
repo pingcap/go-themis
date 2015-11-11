@@ -355,24 +355,36 @@ func (txn *Txn) tryToCleanLockAndGetAgain(tbl []byte, g *hbase.Get, lockKvs []*h
 	return r, nil
 }
 
+func (txn *Txn) commitSecondaryAndCleanLock(lock *SecondaryLock, commitTs uint64) error {
+	cc := lock.getColumn()
+	mutation := &columnMutation{
+		Column: &cc.Column,
+		mutationValuePair: &mutationValuePair{
+			typ: lock.typ,
+		},
+	}
+	err := txn.themisCli.commitSecondaryRow(cc.Table, cc.Row,
+		[]*columnMutation{mutation}, lock.getTimestamp(), commitTs)
+	if err != nil {
+		return errors.Trace(err)
+	}
+	return nil
+}
+
 func (txn *Txn) tryToCleanLock(lock ThemisLock) error {
 	// if it's secondary lock, first we'll check if its primary lock has been released.
-	if lock.isPrimary() == false {
+	if !lock.isPrimary() {
 		// get primary lock
 		pl := lock.getPrimaryLock()
-		// get lock column and row info
-		cc := pl.getColumn()
-		get := hbase.NewGet(cc.Row)
-		get.AddStringColumn(string(LockFamilyName), string(cc.Family)+"#"+string(cc.Qual))
-		// check if lock exists
-		rs, err := txn.client.Get(string(cc.Table), get)
+		// check primary lock is exists
+		exists, err := txn.lockCleaner.isPrimaryLockExisted(pl.(*PrimaryLock))
 		if err != nil {
 			return errors.Trace(err)
 		}
-		// primary lock has been released
-		if rs == nil {
+		if !exists {
 			log.Info("primary lock not found")
 			// primary row is committed, commit this row
+			cc := pl.getColumn()
 			commitTs, err := txn.lockCleaner.getCommitTS(cc, pl.getTimestamp())
 			if err != nil {
 				return errors.Trace(err)
@@ -381,23 +393,10 @@ func (txn *Txn) tryToCleanLock(lock ThemisLock) error {
 				// if this transction has been committed
 				log.Info("txn has been committed, ts:", commitTs, "prewriteTs:", pl.getTimestamp())
 				// commit secondary row
-				cc = lock.getColumn()
-				mutation := &columnMutation{
-					Column: &cc.Column,
-					mutationValuePair: &mutationValuePair{
-						typ: lock.(*SecondaryLock).typ,
-					},
-				}
-				err = txn.themisCli.commitSecondaryRow(cc.Table, cc.Row,
-					[]*columnMutation{mutation}, pl.getTimestamp(), commitTs)
-				if err != nil {
-					return errors.Trace(err)
-				}
-				return nil
+				return txn.commitSecondaryAndCleanLock(lock.(*SecondaryLock), commitTs)
 			}
 		}
 	}
-	// checkd
 	log.Warn("try to clean lock")
 	expired, err := txn.themisCli.checkAndSetLockIsExpired(lock)
 	if err != nil {
