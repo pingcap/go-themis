@@ -128,7 +128,7 @@ func (s *TransactionTestSuit) TestBrokenPrewriteSecondary(c *C) {
 		g := hbase.NewGet([]byte(fmt.Sprintf("test_%d", i)))
 		r, err := tx.Get(themisTestTableName, g)
 		c.Assert(err, Equals, nil)
-		c.Assert(string(r.SortedColumns[0].Value) != fmt.Sprintf("%d", ts), Equals, true)
+		c.Assert(r == nil || string(r.SortedColumns[0].Value) != fmt.Sprintf("%d", ts), Equals, true)
 	}
 }
 
@@ -166,7 +166,8 @@ func (s *TransactionTestSuit) TestPrimaryLockTimeout(c *C) {
 		g := hbase.NewGet([]byte(fmt.Sprintf("test_%d", i)))
 		r, err := tx.Get(themisTestTableName, g)
 		c.Assert(err, Equals, nil)
-		c.Assert(string(r.SortedColumns[0].Value) != fmt.Sprintf("%d", ts), Equals, true)
+		// this commit must rollback
+		c.Assert(r == nil || string(r.SortedColumns[0].Value) != fmt.Sprintf("%d", ts), Equals, true)
 		log.Info(r, err)
 	}
 }
@@ -294,20 +295,7 @@ func (s *TransactionTestSuit) TestBatchGetWithLocks(c *C) {
 	}
 	rs, err := tx.BatchGet(themisTestTableName, gets)
 	c.Assert(err, IsNil)
-	// only gets primary row
-	c.Assert(len(rs), Equals, 1)
-
-	// wait until lock expired
-	log.Info("wait until lock expires")
-	cnt := 30
-	for cnt > 0 {
-		cnt--
-		log.Info("remain", cnt)
-		time.Sleep(1 * time.Second)
-	}
-	rs, err = tx.BatchGet(themisTestTableName, gets)
-	c.Assert(err, IsNil)
-	// only gets primary row
+	// we had already cleaned secondary locks
 	c.Assert(len(rs), Equals, 10)
 }
 

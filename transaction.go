@@ -153,8 +153,6 @@ func (txn *Txn) Put(tbl string, p *hbase.Put) {
 }
 
 func (txn *Txn) Delete(tbl string, p *hbase.Delete) error {
-	recordCounterMetrics(metricsDeleteCounter, 1)
-
 	entries, err := getEntriesFromDel(p)
 	if err != nil {
 		return errors.Trace(err)
@@ -166,8 +164,6 @@ func (txn *Txn) Delete(tbl string, p *hbase.Delete) error {
 }
 
 func (txn *Txn) Commit() error {
-	defer recordMetrics(metricsTxnCommitCounter, metricsTxnCommitTimeSum, metricsTxnCommitAverageTime, time.Now())
-
 	if txn.mutationCache.getSize() == 0 {
 		// read-only transaction
 		return nil
@@ -231,15 +227,18 @@ func (txn *Txn) batchCommitSecondary(wait bool) {
 	for _, regionRowMap := range rsRowMap {
 		wg.Add(1)
 		_, firstRowM := getFirstEntity(regionRowMap)
-		go func(tbl []byte, rMap map[string]*rowMutation) {
-			defer wg.Done()
-			err := txn.themisCli.batchCommitSecondaryRows(tbl, rMap, txn.startTs, txn.commitTs)
+		go func(cli themisClient, tbl string, rMap map[string]*rowMutation, startTs, commitTs uint64) {
+			defer func() {
+				log.Error("commit secondary finish", len(rMap), rMap)
+				wg.Done()
+			}()
+			err := cli.batchCommitSecondaryRows([]byte(tbl), rMap, startTs, commitTs)
 			if err != nil {
 				// fail of secondary commit will not stop the commits of next
 				// secondaries
 				log.Warning(err)
 			}
-		}(firstRowM.tbl, regionRowMap)
+		}(txn.themisCli, string(firstRowM.tbl), regionRowMap, txn.startTs, txn.commitTs)
 	}
 	if wait {
 		wg.Wait()
@@ -589,8 +588,6 @@ func (txn *Txn) brokenPrewriteSecondary() error {
 }
 
 func (txn *Txn) batchPrewriteSecondaries() error {
-	defer recordMetrics(metricsBatchPrewriteSecondaryCounter, metricsBatchPrewriteSecondaryTimeSum, metricsBatchPrewriteSecondaryAverageTime, time.Now())
-
 	wg := sync.WaitGroup{}
 	//will batch prewrite all rows in a region
 	rsRowMap := txn.groupByRegion()

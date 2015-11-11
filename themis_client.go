@@ -247,6 +247,7 @@ func (t *themisClientImpl) batchCommitSecondaryRows(tbl []byte, rowMs map[string
 	if err != nil {
 		return errors.Trace(err)
 	}
+	log.Info("call batch commit secondary rows", len(req.ThemisCommit))
 
 	cResult := res.BatchCommitSecondaryResult
 	if cResult != nil && len(cResult) > 0 {

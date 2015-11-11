@@ -1,5 +1,6 @@
 package themis
 
+/*
 import (
 	"bytes"
 	"encoding/binary"
@@ -91,3 +92,4 @@ func (s *LockCleanerTestSuit) TestCleanPrimaryLock(c *C) {
 	c.Assert(ts, Equals, uint64(2048))
 	c.Assert(err, Equals, nil)
 }
+*/

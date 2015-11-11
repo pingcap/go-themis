@@ -55,6 +55,7 @@ func (s *ThemisScanner) Next() *hbase.ResultRow {
 	}
 	// if we encounter conflict locks, we need to clean lock for this row and read again
 	if isLockResult(r) {
+		log.Error("scan occur lock")
 		g := s.createGetFromScan(r.Row)
 		r, err := s.txn.tryToCleanLockAndGetAgain(s.tbl, g, r.SortedColumns)
 		if err != nil {
