@@ -106,7 +106,6 @@ func (txn *Txn) BatchGet(tbl string, gets []*hbase.Get) ([]*hbase.ResultRow, err
 		// if this row is locked, try clean lock and get again
 		if isLockResult(r) {
 			hasLock = true
-			log.Warning("BatchGet gets lock, try to clean and get again")
 			err = txn.constructLockAndClean([]byte(tbl), r.SortedColumns)
 			if err != nil {
 				// TODO if it's a conflict error, it means this lock
@@ -134,7 +133,6 @@ func (txn *Txn) Get(tbl string, g *hbase.Get) (*hbase.ResultRow, error) {
 	}
 	// contain locks, try to clean and get again
 	if r != nil && isLockResult(r) {
-		log.Warning("get lock, try to clean and get again")
 		r, err = txn.tryToCleanLockAndGetAgain([]byte(tbl), g, r.SortedColumns)
 		if err != nil {
 			return nil, errors.Trace(err)
@@ -165,7 +163,6 @@ func (txn *Txn) Delete(tbl string, p *hbase.Delete) error {
 
 func (txn *Txn) Commit() error {
 	if txn.mutationCache.getSize() == 0 {
-		// read-only transaction
 		return nil
 	}
 
@@ -207,7 +204,6 @@ func (txn *Txn) commitSecondary() {
 }
 
 func (txn *Txn) commitSecondarySync() {
-	log.Info("commit secondary sync")
 	for _, r := range txn.secondaryRows {
 		err := txn.themisCli.commitSecondaryRow(r.tbl, r.row, r.mutationList(false), txn.startTs, txn.commitTs)
 		if err != nil {
@@ -228,22 +224,17 @@ func (txn *Txn) batchCommitSecondary(wait bool) {
 		wg.Add(1)
 		_, firstRowM := getFirstEntity(regionRowMap)
 		go func(cli themisClient, tbl string, rMap map[string]*rowMutation, startTs, commitTs uint64) {
-			defer func() {
-				log.Error("commit secondary finish", len(rMap), rMap)
-				wg.Done()
-			}()
+			defer wg.Done()
 			err := cli.batchCommitSecondaryRows([]byte(tbl), rMap, startTs, commitTs)
 			if err != nil {
 				// fail of secondary commit will not stop the commits of next
 				// secondaries
-				log.Warning(err)
+				log.Error(err)
 			}
 		}(txn.themisCli, string(firstRowM.tbl), regionRowMap, txn.startTs, txn.commitTs)
 	}
 	if wait {
 		wg.Wait()
-	} else {
-		log.Info("fast return")
 	}
 }
 
@@ -396,7 +387,6 @@ func (txn *Txn) tryToCleanLock(lock ThemisLock) error {
 			}
 		}
 	}
-	log.Warn("try to clean lock")
 	expired, err := txn.themisCli.checkAndSetLockIsExpired(lock)
 	if err != nil {
 		return errors.Trace(err)

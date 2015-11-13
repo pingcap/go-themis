@@ -338,8 +338,6 @@ func judgePerwriteResultRow(pResult *ThemisPrewriteResult, tbl []byte, prewriteT
 	// Oops, someone else have already locked this row.
 	newerTs := pResult.GetNewerWriteTs()
 	if newerTs != 0 {
-		log.Errorf("write conflict, encounter write with larger timestamp than prewriteTs=%d, row=%s, conflict: newerTs=%d, row=%q",
-			prewriteTs, string(row), newerTs, pResult.Row)
 		return nil, kv.ErrLockConflict
 	}
 
