@@ -10,7 +10,9 @@ import (
 	"github.com/ngaut/log"
 	"github.com/pingcap/go-hbase"
 	"github.com/pingcap/go-hbase/proto"
+	"github.com/pingcap/go-themis/oracle"
 	"github.com/pingcap/tidb/kv"
+	"github.com/pingcap/tidb/metric"
 )
 
 type themisClient interface {
@@ -58,15 +60,21 @@ func (t *themisClientImpl) call(methodName string, tbl, row []byte, req pb.Messa
 }
 
 func (t *themisClientImpl) checkAndSetLockIsExpired(lock ThemisLock) (bool, error) {
-	b, err := t.isLockExpired(lock.getColumn().Table, lock.getColumn().Row, lock.getTimestamp())
-	if err != nil {
-		return false, errors.Trace(err)
-	}
-	lock.setExpired(b)
-	return b, nil
+	/*
+		b, err := t.isLockExpired(lock.getColumn().Table, lock.getColumn().Row, lock.getTimestamp())
+		if err != nil {
+			return false, errors.Trace(err)
+		}
+	*/
+	ts := lock.getTimestamp() >> 18
+	// TODO: remove hard codes here, 5s
+	expired := oracle.IsExpired(ts, 5*1000)
+	lock.setExpired(expired)
+	return expired, nil
 }
 
 func (t *themisClientImpl) themisGet(tbl []byte, g *hbase.Get, startTs uint64, ignoreLock bool) (*hbase.ResultRow, error) {
+	defer metric.Inc("themis-get-rpc", 1)
 	req := &ThemisGetRequest{
 		Get:        g.ToProto().(*proto.Get),
 		StartTs:    pb.Uint64(startTs),
@@ -81,6 +89,7 @@ func (t *themisClientImpl) themisGet(tbl []byte, g *hbase.Get, startTs uint64, i
 }
 
 func (t *themisClientImpl) themisBatchGet(tbl []byte, gets []*hbase.Get, startTs uint64, ignoreLock bool) ([]*hbase.ResultRow, error) {
+	defer metric.Inc("themis-batch-get-rpc", 1)
 	var protoGets []*proto.Get
 	for _, g := range gets {
 		protoGets = append(protoGets, g.ToProto().(*proto.Get))
