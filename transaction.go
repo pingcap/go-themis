@@ -12,6 +12,7 @@ import (
 	"github.com/pingcap/go-hbase"
 	"github.com/pingcap/go-themis/oracle"
 	"github.com/pingcap/go-themis/oracle/oracles"
+	"github.com/pingcap/tidb/kv"
 )
 
 type TxnConfig struct {
@@ -461,7 +462,7 @@ func (txn *Txn) batchPrewriteSecondaryRowsWithLockClean(tbl []byte, rowMs map[st
 				return errors.Trace(err)
 			}
 			if lock != nil {
-				return fmt.Errorf("can't clean lock, column:%+v; conflict lock: %+v, lock ts: %d", lock.getColumn(), lock, lock.getTimestamp())
+				return kv.ErrLockConflict
 			}
 		}
 	}
@@ -485,7 +486,7 @@ func (txn *Txn) prewriteRowWithLockClean(tbl []byte, mutation *rowMutation, cont
 			return errors.Trace(err)
 		}
 		if lock != nil {
-			return fmt.Errorf("can't clean lock, column:%+v; conflict lock: %+v, lock ts: %d", lock.getColumn(), lock, lock.getTimestamp())
+			return kv.ErrLockConflict
 		}
 	}
 	return nil
