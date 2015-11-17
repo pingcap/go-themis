@@ -462,7 +462,7 @@ func (txn *Txn) batchPrewriteSecondaryRowsWithLockClean(tbl []byte, rowMs map[st
 				return errors.Trace(err)
 			}
 			if lock != nil {
-				log.Errorf("can't clean lock, column:%+v; conflict lock: %+v, lock ts: %d", lock.getColumn(), lock, lock.getTimestamp())
+				log.Errorf("can't clean lock, column:%q; conflict lock: %+v, lock ts: %d", lock.getColumn(), lock, lock.getTimestamp())
 				return kv.ErrLockConflict
 			}
 		}
@@ -487,7 +487,7 @@ func (txn *Txn) prewriteRowWithLockClean(tbl []byte, mutation *rowMutation, cont
 			return errors.Trace(err)
 		}
 		if lock != nil {
-			log.Errorf("can't clean lock, column:%+v; conflict lock: %+v, lock ts: %d", lock.getColumn(), lock, lock.getTimestamp())
+			log.Errorf("can't clean lock, column:%q; conflict lock: %+v, lock ts: %d", lock.getColumn(), lock, lock.getTimestamp())
 			return kv.ErrLockConflict
 		}
 	}
