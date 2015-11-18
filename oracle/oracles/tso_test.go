@@ -2,11 +2,11 @@ package oracles
 
 import "testing"
 
-func TestLocalOracle(t *testing.T) {
-	l := &LocalOracle{}
+func TestTsoOracle(t *testing.T) {
+	oracle := NewTsoOracle("localhost:1234")
 	m := map[uint64]struct{}{}
 	for i := 0; i < 100000; i++ {
-		ts, err := l.GetTimestamp()
+		ts, err := oracle.GetTimestamp()
 		if err != nil {
 			t.Error(err)
 		}
@@ -14,6 +14,6 @@ func TestLocalOracle(t *testing.T) {
 	}
 
 	if len(m) != 100000 {
-		t.Error("generated same ts")
+		t.Error("generated same ts, ", len(m))
 	}
 }

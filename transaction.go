@@ -11,7 +11,6 @@ import (
 	"github.com/ngaut/log"
 	"github.com/pingcap/go-hbase"
 	"github.com/pingcap/go-themis/oracle"
-	"github.com/pingcap/go-themis/oracle/oracles"
 	"github.com/pingcap/tidb/kv"
 )
 
@@ -53,24 +52,27 @@ type Txn struct {
 }
 
 var (
-	localOracle = &oracles.LocalOracle{}
 	// ErrSimulated is used when maybe rollback occurs error too.
 	ErrSimulated      = errors.New("Error: simulated error")
 	lockConfilctCount = 0
 )
 
-func NewTxn(c hbase.HBaseClient) *Txn {
+func NewTxn(c hbase.HBaseClient, oracle oracle.Oracle) (*Txn, error) {
+	var err error
 	txn := &Txn{
 		client:           c,
 		themisCli:        newThemisClient(c),
 		mutationCache:    newColumnMutationCache(),
-		oracle:           localOracle,
+		oracle:           oracle,
 		primaryRowOffset: -1,
 		conf:             defaultTxnConf,
 	}
-	txn.startTs = txn.oracle.GetTimestamp()
+	txn.startTs, err = txn.oracle.GetTimestamp()
+	if err != nil {
+		return nil, errors.Trace(err)
+	}
 	txn.lockCleaner = newLockCleaner(txn.themisCli, c)
-	return txn
+	return txn, nil
 }
 
 func isLockResult(r *hbase.ResultRow) bool {
@@ -178,7 +180,10 @@ func (txn *Txn) Commit() error {
 		return errors.Trace(err)
 	}
 
-	txn.commitTs = txn.oracle.GetTimestamp()
+	txn.commitTs, err = txn.oracle.GetTimestamp()
+	if err != nil {
+		return errors.Trace(err)
+	}
 	err = txn.commitPrimary()
 	if err != nil {
 		// commit primary error, rollback
