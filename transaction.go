@@ -167,7 +167,7 @@ func (txn *Txn) Commit() error {
 		return nil
 	}
 
-	txn.selectPrepareAndSecondary()
+	txn.selectPrimaryAndSecondaries()
 	err := txn.prewritePrimary()
 	if err != nil {
 		return errors.Trace(err)
@@ -260,7 +260,7 @@ func (txn *Txn) commitPrimary() error {
 		txn.startTs, txn.commitTs, txn.primaryRowOffset)
 }
 
-func (txn *Txn) selectPrepareAndSecondary() {
+func (txn *Txn) selectPrimaryAndSecondaries() {
 	txn.secondary = nil
 	for tblName, rowMutations := range txn.mutationCache.mutations {
 		for _, rowMutation := range rowMutations {
