@@ -5,7 +5,7 @@ import (
 	"github.com/ngaut/tso/client"
 )
 
-const remoteRetryTimes = 3
+const maxRetryCnt = 3
 
 // RemoteOracle is an oracle that use a remote data source.
 // Refer https://github.com/ngaut/tso for more details.
@@ -23,10 +23,10 @@ func NewRemoteOracle(addr string) *RemoteOracle {
 // GetTimestamp gets timestamp from remote data source.
 func (t *RemoteOracle) GetTimestamp() (uint64, error) {
 	var err error
-	for i := 0; i < remoteRetryTimes; i++ {
+	for i := 0; i < maxRetryCnt; i++ {
 		ts, e := t.c.GoGetTimestamp().GetTS()
 		if e == nil {
-			return uint64((ts.Physical << 18) + ts.Logical), nil
+			return uint64((ts.Physical << epochShiftBits) + ts.Logical), nil
 		}
 		err = errors.Trace(e)
 	}
