@@ -1,6 +1,9 @@
 package oracles
 
-import "github.com/ngaut/tso/client"
+import (
+	"github.com/juju/errors"
+	"github.com/ngaut/tso/client"
+)
 
 type RemoteOracle struct {
 	c *client.Client
@@ -15,7 +18,7 @@ func NewRemoteOracle(addr string) *RemoteOracle {
 func (t *RemoteOracle) GetTimestamp() (uint64, error) {
 	ts, err := t.c.GoGetTimestamp().GetTS()
 	if err != nil {
-		return 0, err
+		return 0, errors.Trace(err)
 	}
-	return uint64((ts.Physical << 18) + ts.Logical), err
+	return uint64((ts.Physical << 18) + ts.Logical), nil
 }
