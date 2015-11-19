@@ -3,7 +3,7 @@ package oracles
 import "testing"
 
 func TestLocalOracle(t *testing.T) {
-	l := &LocalOracle{}
+	l := NewLocalOracle()
 	m := map[uint64]struct{}{}
 	for i := 0; i < 100000; i++ {
 		ts, err := l.GetTimestamp()

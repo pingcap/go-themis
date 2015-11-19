@@ -3,17 +3,26 @@ package oracles
 import (
 	"sync"
 	"time"
+
+	"github.com/pingcap/go-themis/oracle"
 )
 
 const epochShiftBits = 18
 
-type LocalOracle struct {
+var _ oracle.Oracle = &localOracle{}
+
+type localOracle struct {
 	mu              sync.Mutex
 	lastTimeStampTs int64
 	n               int64
 }
 
-func (l *LocalOracle) GetTimestamp() (uint64, error) {
+// NewLocalOracle creates an Oracle that use local time as data source.
+func NewLocalOracle() oracle.Oracle {
+	return &localOracle{}
+}
+
+func (l *localOracle) GetTimestamp() (uint64, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	ts := (time.Now().UnixNano() / int64(time.Millisecond)) << epochShiftBits
