@@ -1,8 +1,8 @@
 package themis
 
 import (
+	. "github.com/pingcap/check"
 	"github.com/pingcap/go-hbase"
-	. "gopkg.in/check.v1"
 )
 
 type SecondaryLockTestSuit struct{}

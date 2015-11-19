@@ -7,7 +7,7 @@ import (
 	"math"
 
 	"github.com/pingcap/go-hbase"
-	. "gopkg.in/check.v1"
+	. "github.com/pingcap/check"
 )
 
 type LockCleanerTestSuit struct{}
