@@ -2,8 +2,8 @@ package oracles
 
 import "testing"
 
-func TestTsoOracle(t *testing.T) {
-	oracle := NewTsoOracle("localhost:1234")
+func TestRemoteOracle(t *testing.T) {
+	oracle := NewRemoteOracle("localhost:1234")
 	m := map[uint64]struct{}{}
 	for i := 0; i < 100000; i++ {
 		ts, err := oracle.GetTimestamp()
