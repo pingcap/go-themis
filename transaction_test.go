@@ -201,7 +201,7 @@ func (s *TransactionTestSuit) TestLockRow(c *C) {
 	err := tx.LockRow(themisTestTableName, row)
 	c.Assert(err, Equals, nil)
 
-	tx.selectPrepareAndSecondary()
+	tx.selectPrimaryAndSecondaries()
 	err = tx.prewritePrimary()
 	c.Assert(err, Equals, nil)
 	colMap := make(map[string]string)
