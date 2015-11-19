@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"sync"
 
-	"time"
-
 	"github.com/juju/errors"
 	"github.com/ngaut/log"
 	"github.com/pingcap/go-hbase"
@@ -145,8 +143,6 @@ func (txn *Txn) Get(tbl string, g *hbase.Get) (*hbase.ResultRow, error) {
 }
 
 func (txn *Txn) Put(tbl string, p *hbase.Put) {
-	recordCounterMetrics(metricsPutCounter, 1)
-
 	// add mutation to buffer
 	for _, e := range getEntriesFromPut(p) {
 		txn.mutationCache.addMutation([]byte(tbl), p.Row, e.Column, e.typ, e.value, false)
@@ -521,8 +517,6 @@ func (txn *Txn) prewriteRow(tbl []byte, mutation *rowMutation, containPrimary bo
 }
 
 func (txn *Txn) prewritePrimary() error {
-	defer recordMetrics(metricsPrewritePrimaryCounter, metricsPrewritePrimaryTimeSum, metricsPrewritePrimaryAverageTime, time.Now())
-
 	err := txn.prewriteRowWithLockClean(txn.primary.Table, txn.primaryRow, true)
 	if err != nil {
 		return errors.Trace(err)
@@ -541,8 +535,6 @@ func (txn *Txn) prewriteSecondary() error {
 }
 
 func (txn *Txn) prewriteSecondarySync() error {
-	defer recordMetrics(metricsSyncPrewriteSecondaryCounter, metricsSyncPrewriteSecondaryTimeSum, metricsSyncPrewriteSecondaryAverageTime, time.Now())
-
 	for i, mu := range txn.secondaryRows {
 		err := txn.prewriteRowWithLockClean(mu.tbl, mu, false)
 		if err != nil {
@@ -651,8 +643,6 @@ func getBatchGroupKey(rInfo *hbase.RegionInfo, tblName string) string {
 }
 
 func (txn *Txn) rollbackRow(tbl []byte, mutation *rowMutation) error {
-	defer recordMetrics(metricsRollbackCounter, metricsRollbackTimeSum, metricsRollbackAverageTime, time.Now())
-
 	l := fmt.Sprintf("\nrolling back %s {\n", string(tbl))
 	for _, v := range mutation.getColumns() {
 		l += fmt.Sprintf("\t%s:%s\n", string(v.Family), string(v.Qual))
@@ -706,8 +696,6 @@ func (txn *Txn) GetStartTS() uint64 {
 }
 
 func (txn *Txn) LockRow(tbl string, rowkey []byte) error {
-	defer recordMetrics(metricsLockRowCounter, metricsLockRowTimeSum, metricsLockRowAverageTime, time.Now())
-
 	g := hbase.NewGet(rowkey)
 	r, err := txn.Get(tbl, g)
 	if err != nil {
