@@ -3,9 +3,8 @@ package themis
 import (
 	"testing"
 
+	. "github.com/pingcap/check"
 	"github.com/pingcap/go-hbase"
-
-	. "gopkg.in/check.v1"
 )
 
 // Hook up gocheck into the "go test" runner.

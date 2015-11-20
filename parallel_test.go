@@ -5,9 +5,10 @@ import (
 	"strconv"
 	"sync"
 
-	"github.com/pingcap/go-hbase"
 	"github.com/ngaut/log"
-	. "gopkg.in/check.v1"
+	. "github.com/pingcap/check"
+	"github.com/pingcap/go-hbase"
+	"github.com/pingcap/go-themis/oracle/oracles"
 )
 
 type ParallelTestSuit struct{}
@@ -27,7 +28,8 @@ func (s *ParallelTestSuit) TestParallelHbaseCall(c *C) {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			tx := NewTxn(cli)
+			tx, err := NewTxn(cli, oracles.NewLocalOracle())
+			c.Assert(err, IsNil)
 			p := hbase.NewPut([]byte("test"))
 			p.AddValue([]byte(cfName), []byte("q"), []byte(strconv.Itoa(i)))
 			tx.Put(themisTestTableName, p)
