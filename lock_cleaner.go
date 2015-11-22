@@ -14,7 +14,7 @@ type lockCleaner interface {
 	cleanPrimaryLock(cc *hbase.ColumnCoordinate, prewriteTs uint64) (uint64, ThemisLock, error)
 	eraseLockAndData(tbl []byte, row []byte, cols []hbase.Column, ts uint64) error
 	getCommitTS(cc *hbase.ColumnCoordinate, prewriteTs uint64) (uint64, error)
-	isPrimaryLockExisted(l *PrimaryLock) (bool, error)
+	isLockExisted(l ThemisLock) (bool, error)
 }
 
 var _ lockCleaner = (*lockCleanerImpl)(nil)
@@ -72,9 +72,10 @@ func constructLocks(tbl []byte, lockKvs []*hbase.Kv, client themisClient) ([]The
 	return locks, nil
 }
 
-func (cleaner *lockCleanerImpl) isPrimaryLockExisted(l *PrimaryLock) (bool, error) {
+func (cleaner *lockCleanerImpl) isLockExisted(l ThemisLock) (bool, error) {
 	cc := l.getColumn()
 	get := hbase.NewGet(cc.Row)
+	get.AddTimeRange(0, l.getTimestamp()+1)
 	get.AddStringColumn(string(LockFamilyName), string(cc.Family)+"#"+string(cc.Qual))
 	// check if lock exists
 	rs, err := cleaner.hbaseCli.Get(string(cc.Table), get)
