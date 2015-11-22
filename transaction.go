@@ -330,7 +330,7 @@ func (txn *Txn) constructLockAndClean(tbl []byte, lockKvs []*hbase.Kv) error {
 		return errors.Trace(err)
 	}
 	for _, lock := range locks {
-		err := txn.tryToCleanLock(lock)
+		err := txn.cleanLockWithRetry(lock)
 		if err != nil {
 			return errors.Trace(err)
 		}
@@ -370,10 +370,12 @@ func (txn *Txn) commitSecondaryAndCleanLock(lock *SecondaryLock, commitTs uint64
 }
 
 func (txn *Txn) cleanLockWithRetry(lock ThemisLock) error {
-	for {
+	for i := 0; i < cleanLockMaxRetryCount; i++ {
 		if exists, err := txn.lockCleaner.isLockExisted(lock); err == nil && exists {
 			err := txn.tryToCleanLock(lock)
 			if err != nil && terror.ErrorEqual(err, ErrLockNotExpired) {
+				log.Warn("sleep a while, and retry clean lock")
+				// TODO(dongxu) use cleverer retry sleep time interval
 				time.Sleep(pauseTime)
 				continue
 			} else if err != nil {
@@ -480,7 +482,7 @@ func (txn *Txn) batchPrewriteSecondaryRowsWithLockClean(tbl []byte, rowMs map[st
 	if locks != nil && len(locks) > 0 {
 		// try one more time after clean lock successfully
 		for row, lock := range locks {
-			err = txn.tryToCleanLock(lock)
+			err = txn.cleanLockWithRetry(lock)
 			if err != nil {
 				return errors.Trace(err)
 			}
@@ -506,7 +508,7 @@ func (txn *Txn) prewriteRowWithLockClean(tbl []byte, mutation *rowMutation, cont
 	}
 	// lock clean
 	if lock != nil {
-		err = txn.tryToCleanLock(lock)
+		err = txn.cleanLockWithRetry(lock)
 		if err != nil {
 			return errors.Trace(err)
 		}
