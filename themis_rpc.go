@@ -26,7 +26,7 @@ type themisRPC struct {
 	conf   TxnConfig
 }
 
-func (t *themisRPC) call(methodName string, tbl, row []byte, req pb.Message, resp pb.Message) error {
+func (rpc *themisRPC) call(methodName string, tbl, row []byte, req pb.Message, resp pb.Message) error {
 	param, _ := pb.Marshal(req)
 
 	call := &hbase.CoprocessorServiceCall{
@@ -35,7 +35,7 @@ func (t *themisRPC) call(methodName string, tbl, row []byte, req pb.Message, res
 		MethodName:   methodName,
 		RequestParam: param,
 	}
-	r, err := t.client.ServiceCall(string(tbl), call)
+	r, err := rpc.client.ServiceCall(string(tbl), call)
 	if err != nil {
 		return errors.Trace(err)
 	}
@@ -46,28 +46,28 @@ func (t *themisRPC) call(methodName string, tbl, row []byte, req pb.Message, res
 	return nil
 }
 
-func (t *themisRPC) checkAndSetLockIsExpired(lock Lock) (bool, error) {
+func (rpc *themisRPC) checkAndSetLockIsExpired(lock Lock) (bool, error) {
 	ts := lock.Timestamp() >> 18
-	expired := oracle.IsExpired(ts, t.conf.TTLInMs)
+	expired := oracle.IsExpired(ts, rpc.conf.TTLInMs)
 	lock.SetExpired(expired)
 	return expired, nil
 }
 
-func (t *themisRPC) themisGet(tbl []byte, g *hbase.Get, startTs uint64, ignoreLock bool) (*hbase.ResultRow, error) {
+func (rpc *themisRPC) themisGet(tbl []byte, g *hbase.Get, startTs uint64, ignoreLock bool) (*hbase.ResultRow, error) {
 	req := &ThemisGetRequest{
 		Get:        g.ToProto().(*proto.Get),
 		StartTs:    pb.Uint64(startTs),
 		IgnoreLock: pb.Bool(ignoreLock),
 	}
 	var resp proto.Result
-	err := t.call("themisGet", tbl, g.Row, req, &resp)
+	err := rpc.call("themisGet", tbl, g.Row, req, &resp)
 	if err != nil {
 		return nil, errors.Trace(err)
 	}
 	return hbase.NewResultRow(&resp), nil
 }
 
-func (t *themisRPC) themisBatchGet(tbl []byte, gets []*hbase.Get, startTs uint64, ignoreLock bool) ([]*hbase.ResultRow, error) {
+func (rpc *themisRPC) themisBatchGet(tbl []byte, gets []*hbase.Get, startTs uint64, ignoreLock bool) ([]*hbase.ResultRow, error) {
 	var protoGets []*proto.Get
 	for _, g := range gets {
 		protoGets = append(protoGets, g.ToProto().(*proto.Get))
@@ -78,7 +78,7 @@ func (t *themisRPC) themisBatchGet(tbl []byte, gets []*hbase.Get, startTs uint64
 		IgnoreLock: pb.Bool(ignoreLock),
 	}
 	var resp ThemisBatchGetResponse
-	err := t.call("themisBatchGet", tbl, gets[0].Row, req, &resp)
+	err := rpc.call("themisBatchGet", tbl, gets[0].Row, req, &resp)
 	if err != nil {
 		return nil, errors.Trace(err)
 	}
@@ -89,7 +89,7 @@ func (t *themisRPC) themisBatchGet(tbl []byte, gets []*hbase.Get, startTs uint64
 	return results, nil
 }
 
-func (t *themisRPC) prewriteRow(tbl []byte, row []byte, mutations []*columnMutation, prewriteTs uint64, primaryLockBytes []byte, secondaryLockBytes []byte, primaryOffset int) (Lock, error) {
+func (rpc *themisRPC) prewriteRow(tbl []byte, row []byte, mutations []*columnMutation, prewriteTs uint64, primaryLockBytes []byte, secondaryLockBytes []byte, primaryOffset int) (Lock, error) {
 	var cells []*proto.Cell
 	request := &ThemisPrewriteRequest{
 		PrewriteTs:    pb.Uint64(prewriteTs),
@@ -112,7 +112,7 @@ func (t *themisRPC) prewriteRow(tbl []byte, row []byte, mutations []*columnMutat
 	request.ThemisPrewrite.Mutations = cells
 
 	var res ThemisPrewriteResponse
-	err := t.call("prewriteRow", tbl, row, request, &res)
+	err := rpc.call("prewriteRow", tbl, row, request, &res)
 	if err != nil {
 		return nil, errors.Trace(err)
 	}
@@ -147,7 +147,7 @@ func (t *themisRPC) prewriteRow(tbl []byte, row []byte, mutations []*columnMutat
 	return l, nil
 }
 
-func (t *themisRPC) isLockExpired(tbl, row []byte, ts uint64) (bool, error) {
+func (rpc *themisRPC) isLockExpired(tbl, row []byte, ts uint64) (bool, error) {
 	req := &LockExpiredRequest{
 		Timestamp: pb.Uint64(ts),
 	}
@@ -155,14 +155,14 @@ func (t *themisRPC) isLockExpired(tbl, row []byte, ts uint64) (bool, error) {
 	if row == nil {
 		debug.PrintStack()
 	}
-	err := t.call("isLockExpired", tbl, row, req, &res)
+	err := rpc.call("isLockExpired", tbl, row, req, &res)
 	if err != nil {
 		return false, errors.Trace(err)
 	}
 	return res.GetExpired(), nil
 }
 
-func (t *themisRPC) getLockAndErase(cc *hbase.ColumnCoordinate, prewriteTs uint64) (Lock, error) {
+func (rpc *themisRPC) getLockAndErase(cc *hbase.ColumnCoordinate, prewriteTs uint64) (Lock, error) {
 	req := &EraseLockRequest{
 		Row:        cc.Row,
 		Family:     cc.Column.Family,
@@ -170,7 +170,7 @@ func (t *themisRPC) getLockAndErase(cc *hbase.ColumnCoordinate, prewriteTs uint6
 		PrewriteTs: pb.Uint64(prewriteTs),
 	}
 	var res EraseLockResponse
-	err := t.call("getLockAndErase", cc.Table, cc.Row, req, &res)
+	err := rpc.call("getLockAndErase", cc.Table, cc.Row, req, &res)
 	if err != nil {
 		return nil, errors.Trace(err)
 	}
@@ -181,7 +181,7 @@ func (t *themisRPC) getLockAndErase(cc *hbase.ColumnCoordinate, prewriteTs uint6
 	return parseLockFromBytes(b)
 }
 
-func (t *themisRPC) commitRow(tbl, row []byte, mutations []*columnMutation,
+func (rpc *themisRPC) commitRow(tbl, row []byte, mutations []*columnMutation,
 	prewriteTs, commitTs uint64, primaryOffset int) error {
 	req := &ThemisCommitRequest{}
 	req.ThemisCommit = &ThemisCommit{
@@ -195,7 +195,7 @@ func (t *themisRPC) commitRow(tbl, row []byte, mutations []*columnMutation,
 		req.ThemisCommit.Mutations = append(req.ThemisCommit.Mutations, m.toCell())
 	}
 	var res ThemisCommitResponse
-	err := t.call("commitRow", tbl, row, req, &res)
+	err := rpc.call("commitRow", tbl, row, req, &res)
 	if err != nil {
 		return errors.Trace(err)
 	}
@@ -206,7 +206,7 @@ func (t *themisRPC) commitRow(tbl, row []byte, mutations []*columnMutation,
 	return nil
 }
 
-func (t *themisRPC) batchCommitSecondaryRows(tbl []byte, rowMs map[string]*rowMutation, prewriteTs, commitTs uint64) error {
+func (rpc *themisRPC) batchCommitSecondaryRows(tbl []byte, rowMs map[string]*rowMutation, prewriteTs, commitTs uint64) error {
 	req := &ThemisBatchCommitSecondaryRequest{}
 
 	i := 0
@@ -230,7 +230,7 @@ func (t *themisRPC) batchCommitSecondaryRows(tbl []byte, rowMs map[string]*rowMu
 	}
 
 	var res ThemisBatchCommitSecondaryResponse
-	err := t.call("batchCommitSecondaryRows", tbl, lastRow, req, &res)
+	err := rpc.call("batchCommitSecondaryRows", tbl, lastRow, req, &res)
 	if err != nil {
 		return errors.Trace(err)
 	}
@@ -247,18 +247,18 @@ func (t *themisRPC) batchCommitSecondaryRows(tbl []byte, rowMs map[string]*rowMu
 	return nil
 }
 
-func (t *themisRPC) commitSecondaryRow(tbl, row []byte, mutations []*columnMutation,
+func (rpc *themisRPC) commitSecondaryRow(tbl, row []byte, mutations []*columnMutation,
 	prewriteTs, commitTs uint64) error {
-	return t.commitRow(tbl, row, mutations, prewriteTs, commitTs, -1)
+	return rpc.commitRow(tbl, row, mutations, prewriteTs, commitTs, -1)
 }
 
-func (t *themisRPC) prewriteSecondaryRow(tbl, row []byte,
+func (rpc *themisRPC) prewriteSecondaryRow(tbl, row []byte,
 	mutations []*columnMutation, prewriteTs uint64,
 	secondaryLockBytes []byte) (Lock, error) {
-	return t.prewriteRow(tbl, row, mutations, prewriteTs, nil, secondaryLockBytes, -1)
+	return rpc.prewriteRow(tbl, row, mutations, prewriteTs, nil, secondaryLockBytes, -1)
 }
 
-func (t *themisRPC) batchPrewriteSecondaryRows(tbl []byte, rowMs map[string]*rowMutation, prewriteTs uint64, secondaryLockBytes []byte) (map[string]Lock, error) {
+func (rpc *themisRPC) batchPrewriteSecondaryRows(tbl []byte, rowMs map[string]*rowMutation, prewriteTs uint64, secondaryLockBytes []byte) (map[string]Lock, error) {
 	request := &ThemisBatchPrewriteSecondaryRequest{
 		PrewriteTs:    pb.Uint64(prewriteTs),
 		SecondaryLock: secondaryLockBytes,
@@ -284,7 +284,7 @@ func (t *themisRPC) batchPrewriteSecondaryRows(tbl []byte, rowMs map[string]*row
 	}
 
 	var res ThemisBatchPrewriteSecondaryResponse
-	err := t.call("batchPrewriteSecondaryRows", tbl, lastRow, request, &res)
+	err := rpc.call("batchPrewriteSecondaryRows", tbl, lastRow, request, &res)
 	if err != nil {
 		return nil, errors.Trace(err)
 	}
@@ -293,7 +293,7 @@ func (t *themisRPC) batchPrewriteSecondaryRows(tbl []byte, rowMs map[string]*row
 	lockMap := make(map[string]Lock)
 	if res.RowsNotInRegion != nil && len(res.RowsNotInRegion) > 0 {
 		for _, r := range res.RowsNotInRegion {
-			tl, err := t.prewriteSecondaryRow(tbl, r, rowMs[string(r)].mutationList(true), prewriteTs, secondaryLockBytes)
+			tl, err := rpc.prewriteSecondaryRow(tbl, r, rowMs[string(r)].mutationList(true), prewriteTs, secondaryLockBytes)
 			if err != nil {
 				return nil, errors.Trace(err)
 			}
