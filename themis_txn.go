@@ -16,6 +16,7 @@ import (
 type TxnConfig struct {
 	ConcurrentPrewriteAndCommit bool
 	WaitSecondaryCommit         bool
+	TTLInMs                     uint64
 	// options below is for debugging and testing
 	brokenPrewriteSecondaryTest            bool
 	brokenPrewriteSecondaryAndRollbackTest bool
@@ -26,6 +27,7 @@ type TxnConfig struct {
 var defaultTxnConf = TxnConfig{
 	ConcurrentPrewriteAndCommit:            true,
 	WaitSecondaryCommit:                    false,
+	TTLInMs:                                5 * 1000, // default txn TTL: 5s
 	brokenPrewriteSecondaryTest:            false,
 	brokenPrewriteSecondaryAndRollbackTest: false,
 	brokenCommitPrimaryTest:                false,
@@ -34,7 +36,7 @@ var defaultTxnConf = TxnConfig{
 
 type themisTxn struct {
 	client             hbase.HBaseClient
-	themisCli          *themisRPC
+	rpc                *themisRPC
 	lockCleaner        LockManager
 	oracle             oracle.Oracle
 	mutationCache      *columnMutationCache
@@ -64,17 +66,17 @@ func NewTxn(c hbase.HBaseClient, oracle oracle.Oracle) (Txn, error) {
 	var err error
 	txn := &themisTxn{
 		client:           c,
-		themisCli:        newThemisClient(c),
 		mutationCache:    newColumnMutationCache(),
 		oracle:           oracle,
 		primaryRowOffset: -1,
 		conf:             defaultTxnConf,
+		rpc:              newThemisRPC(c, defaultTxnConf),
 	}
 	txn.startTs, err = txn.oracle.GetTimestamp()
 	if err != nil {
 		return nil, errors.Trace(err)
 	}
-	txn.lockCleaner = newThemisLockManager(txn.themisCli, c)
+	txn.lockCleaner = newThemisLockManager(txn.rpc, c)
 	return txn, nil
 }
 
@@ -84,7 +86,7 @@ func (txn *themisTxn) AddConfig(conf TxnConfig) Txn {
 }
 
 func (txn *themisTxn) Gets(tbl string, gets []*hbase.Get) ([]*hbase.ResultRow, error) {
-	results, err := txn.themisCli.themisBatchGet([]byte(tbl), gets, txn.startTs, false)
+	results, err := txn.rpc.themisBatchGet([]byte(tbl), gets, txn.startTs, false)
 	if err != nil {
 		return nil, errors.Trace(err)
 	}
@@ -106,7 +108,7 @@ func (txn *themisTxn) Gets(tbl string, gets []*hbase.Get) ([]*hbase.ResultRow, e
 	}
 	if hasLock {
 		// after we cleaned locks, try to get again.
-		ret, err = txn.themisCli.themisBatchGet([]byte(tbl), gets, txn.startTs, true)
+		ret, err = txn.rpc.themisBatchGet([]byte(tbl), gets, txn.startTs, true)
 		if err != nil {
 			return nil, errors.Trace(err)
 		}
@@ -115,7 +117,7 @@ func (txn *themisTxn) Gets(tbl string, gets []*hbase.Get) ([]*hbase.ResultRow, e
 }
 
 func (txn *themisTxn) Get(tbl string, g *hbase.Get) (*hbase.ResultRow, error) {
-	r, err := txn.themisCli.themisGet([]byte(tbl), g, txn.startTs, false)
+	r, err := txn.rpc.themisGet([]byte(tbl), g, txn.startTs, false)
 	if err != nil {
 		return nil, errors.Trace(err)
 	}
@@ -194,7 +196,7 @@ func (txn *themisTxn) commitSecondary() {
 
 func (txn *themisTxn) commitSecondarySync() {
 	for _, r := range txn.secondaryRows {
-		err := txn.themisCli.commitSecondaryRow(r.tbl, r.row, r.mutationList(false), txn.startTs, txn.commitTs)
+		err := txn.rpc.commitSecondaryRow(r.tbl, r.row, r.mutationList(false), txn.startTs, txn.commitTs)
 		if err != nil {
 			// fail of secondary commit will not stop the commits of next
 			// secondaries
@@ -220,7 +222,7 @@ func (txn *themisTxn) batchCommitSecondary(wait bool) {
 				// secondaries
 				log.Error(err)
 			}
-		}(txn.themisCli, string(firstRowM.tbl), regionRowMap, txn.startTs, txn.commitTs)
+		}(txn.rpc, string(firstRowM.tbl), regionRowMap, txn.startTs, txn.commitTs)
 	}
 	if wait {
 		wg.Wait()
@@ -243,7 +245,7 @@ func (txn *themisTxn) commitPrimary() error {
 	if txn.conf.brokenCommitPrimaryTest {
 		return txn.brokenCommitPrimary()
 	}
-	return txn.themisCli.commitRow(txn.primary.Table, txn.primary.Row,
+	return txn.rpc.commitRow(txn.primary.Table, txn.primary.Row,
 		txn.primaryRow.mutationList(false),
 		txn.startTs, txn.commitTs, txn.primaryRowOffset)
 }
@@ -306,7 +308,7 @@ func (txn *themisTxn) constructPrimaryLock() *themisPrimaryLock {
 }
 
 func (txn *themisTxn) constructLockAndClean(tbl []byte, lockKvs []*hbase.Kv) error {
-	locks, err := getLocksFromResults([]byte(tbl), lockKvs, txn.themisCli)
+	locks, err := getLocksFromResults([]byte(tbl), lockKvs, txn.rpc)
 	if err != nil {
 		return errors.Trace(err)
 	}
@@ -326,7 +328,7 @@ func (txn *themisTxn) tryToCleanLockAndGetAgain(tbl []byte, g *hbase.Get, lockKv
 		return nil, errors.Trace(err)
 	}
 	// get again, ignore lock
-	r, err := txn.themisCli.themisGet([]byte(tbl), g, txn.startTs, true)
+	r, err := txn.rpc.themisGet([]byte(tbl), g, txn.startTs, true)
 	log.Info("get again, ignore lock", txn.startTs, r)
 	if err != nil {
 		return nil, errors.Trace(err)
@@ -342,7 +344,7 @@ func (txn *themisTxn) commitSecondaryAndCleanLock(lock *themisSecondaryLock, com
 			typ: lock.typ,
 		},
 	}
-	err := txn.themisCli.commitSecondaryRow(cc.Table, cc.Row,
+	err := txn.rpc.commitSecondaryRow(cc.Table, cc.Row,
 		[]*columnMutation{mutation}, lock.Timestamp(), commitTs)
 	if err != nil {
 		return errors.Trace(err)
@@ -400,7 +402,7 @@ func (txn *themisTxn) tryToCleanLock(lock Lock) error {
 			}
 		}
 	}
-	expired, err := txn.themisCli.checkAndSetLockIsExpired(lock)
+	expired, err := txn.rpc.checkAndSetLockIsExpired(lock)
 	if err != nil {
 		return errors.Trace(err)
 	}
@@ -440,7 +442,7 @@ func (txn *themisTxn) tryToCleanLock(lock Lock) error {
 						typ: v,
 					},
 				}
-				err = txn.themisCli.commitSecondaryRow(cc.Table, cc.Row,
+				err = txn.rpc.commitSecondaryRow(cc.Table, cc.Row,
 					[]*columnMutation{mutation}, pl.Timestamp(), commitTs)
 				if err != nil {
 					return errors.Trace(err)
@@ -507,19 +509,19 @@ func (txn *themisTxn) prewriteRowWithLockClean(tbl []byte, mutation *rowMutation
 }
 
 func (txn *themisTxn) batchPrewriteSecondaryRows(tbl []byte, rowMs map[string]*rowMutation) (map[string]Lock, error) {
-	return txn.themisCli.batchPrewriteSecondaryRows(tbl, rowMs, txn.startTs, txn.secondaryLockBytes)
+	return txn.rpc.batchPrewriteSecondaryRows(tbl, rowMs, txn.startTs, txn.secondaryLockBytes)
 }
 
 func (txn *themisTxn) prewriteRow(tbl []byte, mutation *rowMutation, containPrimary bool) (Lock, error) {
 	if containPrimary {
 		// try to get lock
-		return txn.themisCli.prewriteRow(tbl, mutation.row,
+		return txn.rpc.prewriteRow(tbl, mutation.row,
 			mutation.mutationList(true),
 			txn.startTs,
 			txn.constructPrimaryLock().Encode(),
 			txn.secondaryLockBytes, txn.primaryRowOffset)
 	} else {
-		return txn.themisCli.prewriteSecondaryRow(tbl, mutation.row,
+		return txn.rpc.prewriteSecondaryRow(tbl, mutation.row,
 			mutation.mutationList(true),
 			txn.startTs,
 			txn.secondaryLockBytes)

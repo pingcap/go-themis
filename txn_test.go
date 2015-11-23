@@ -6,9 +6,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/juju/errors"
+
 	"github.com/ngaut/log"
 	"github.com/pingcap/go-hbase"
-	"github.com/pingcap/go-themis/oracle/oracles"
 	. "gopkg.in/check.v1"
 )
 
@@ -20,22 +21,19 @@ var _ = Suite(&TransactionTestSuit{})
 
 func Test(t *testing.T) { TestingT(t) }
 
-func newTxn(c hbase.HBaseClient) Txn {
-	txn, err := NewTxn(c, oracles.NewLocalOracle())
-	if err != nil {
-		log.Fatal(err)
-	}
-	return txn
+func (s *TransactionTestSuit) SetUpSuite(c *C) {
+	var err error
+	s.cli, err = createHBaseClient()
+	c.Assert(err, Equals, nil)
 }
 
-func (s *TransactionTestSuit) SetUpSuite(c *C) {
-	s.cli, _ = createHBaseClient()
-	err := createNewTableAndDropOldTable(s.cli, themisTestTableName, cfName, nil)
+func (s *TransactionTestSuit) SetUpTest(c *C) {
+	err := createNewTableAndDropOldTable(s.cli, themisTestTableName, string(cf), nil)
 	c.Assert(err, Equals, nil)
 }
 
 func (s *TransactionTestSuit) TestAsyncCommit(c *C) {
-	p := hbase.NewPut([]byte("test")).AddValue(cf, q, []byte("val"))
+	p := hbase.NewPut(testRow).AddValue(cf, q, []byte("val"))
 	tx := newTxn(s.cli)
 	tx.Put(themisTestTableName, p)
 	tx.Commit()
@@ -61,7 +59,7 @@ func (s *TransactionTestSuit) TestAsyncCommit(c *C) {
 	// simulating broken commit
 	for i := 0; i < 10; i++ {
 		p := hbase.NewPut([]byte(fmt.Sprintf("test_%d", i)))
-		p.AddValue([]byte(cfName), []byte("q"), []byte(fmt.Sprintf("%d", tx.(*themisTxn).GetStartTS())))
+		p.AddValue(cf, q, []byte(fmt.Sprintf("%d", tx.(*themisTxn).GetStartTS())))
 		tx.Put(themisTestTableName, p)
 	}
 	err = tx.Commit()
@@ -69,7 +67,7 @@ func (s *TransactionTestSuit) TestAsyncCommit(c *C) {
 
 	//  wait until lock expired.
 	log.Warn("Wait for lock expired. Sleep...")
-	tick := 30
+	tick := 6
 	for tick > 0 {
 		time.Sleep(1 * time.Second)
 		tick--
@@ -93,12 +91,12 @@ func (s *TransactionTestSuit) TestAsyncCommit(c *C) {
 	tx = newTxn(s.cli)
 	for i := 5; i < 10; i++ {
 		p := hbase.NewPut([]byte(fmt.Sprintf("test_%d", i)))
-		p.AddValue([]byte(cfName), []byte("q"), []byte(fmt.Sprintf("%d", tx.(*themisTxn).GetStartTS())))
+		p.AddValue(cf, q, []byte(fmt.Sprintf("%d", tx.(*themisTxn).GetStartTS())))
 		tx.Put(themisTestTableName, p)
 	}
 	err = tx.Commit()
 	if err != nil {
-		log.Error(err)
+		log.Error(errors.ErrorStack(err))
 	}
 	c.Assert(err, Equals, nil)
 
@@ -110,7 +108,7 @@ func (s *TransactionTestSuit) TestBrokenPrewriteSecondary(c *C) {
 	// simulating broken commit
 	for i := 0; i < 10; i++ {
 		p := hbase.NewPut([]byte(fmt.Sprintf("test_%d", i)))
-		p.AddValue([]byte(cfName), []byte("q"), []byte(fmt.Sprintf("%d", ts)))
+		p.AddValue(cf, q, []byte(fmt.Sprintf("%d", ts)))
 		tx.Put(themisTestTableName, p)
 	}
 	err := tx.Commit()
@@ -125,7 +123,7 @@ func (s *TransactionTestSuit) TestBrokenPrewriteSecondary(c *C) {
 	// simulating broken commit
 	for i := 0; i < 10; i++ {
 		p := hbase.NewPut([]byte(fmt.Sprintf("test_%d", i)))
-		p.AddValue([]byte(cfName), []byte("q"), []byte(fmt.Sprintf("%d", ts)))
+		p.AddValue(cf, q, []byte(fmt.Sprintf("%d", ts)))
 		tx.Put(themisTestTableName, p)
 	}
 	err = tx.Commit()
@@ -153,7 +151,7 @@ func (s *TransactionTestSuit) TestPrimaryLockTimeout(c *C) {
 	// simulating broken commit
 	for i := 0; i < 2; i++ {
 		p := hbase.NewPut([]byte(fmt.Sprintf("test_%d", i)))
-		p.AddValue([]byte(cfName), []byte("q"), []byte(fmt.Sprintf("%d", ts)))
+		p.AddValue(cf, q, []byte(fmt.Sprintf("%d", ts)))
 		tx.Put(themisTestTableName, p)
 	}
 	err := tx.Commit()
@@ -162,7 +160,7 @@ func (s *TransactionTestSuit) TestPrimaryLockTimeout(c *C) {
 
 	//  wait until lock expired.
 	log.Warn("Wait for lock expired. Sleep...")
-	tick := 30
+	tick := 6
 	for tick > 0 {
 		time.Sleep(1 * time.Second)
 		tick--
@@ -184,8 +182,8 @@ func (s *TransactionTestSuit) TestPrimaryLockTimeout(c *C) {
 func checkCommitSuccess(s *TransactionTestSuit, c *C, row []byte) {
 	tx := newTxn(s.cli)
 	colMap := make(map[string]string)
-	colMap["#p:"+cfName+"#q"] = ""
-	colMap[cfName+":q"] = ""
+	colMap["#p:"+string(cf)+"#q"] = ""
+	colMap[string(cf)+":q"] = ""
 	r, err := tx.(*themisTxn).client.Get(themisTestTableName, hbase.NewGet(row))
 	c.Assert(err, Equals, nil)
 	c.Assert(2, Equals, len(r.Columns))
@@ -197,10 +195,9 @@ func checkCommitSuccess(s *TransactionTestSuit, c *C, row []byte) {
 
 func (s *TransactionTestSuit) TestLockRow(c *C) {
 	tx := newTxn(s.cli)
-
 	row := []byte("lockRow")
 	put := hbase.NewPut(row)
-	put.AddValue([]byte(cfName), []byte("q"), []byte("v"))
+	put.AddValue(cf, q, []byte("v"))
 	tx.Put(themisTestTableName, put)
 	tx.Commit()
 
@@ -214,9 +211,9 @@ func (s *TransactionTestSuit) TestLockRow(c *C) {
 	err = tx.(*themisTxn).prewritePrimary()
 	c.Assert(err, Equals, nil)
 	colMap := make(map[string]string)
-	colMap["#p:"+cfName+"#q"] = ""
-	colMap[cfName+":q"] = ""
-	colMap["L:"+cfName+"#q"] = ""
+	colMap["#p:"+string(cf)+"#q"] = ""
+	colMap[string(cf)+":q"] = ""
+	colMap["L:"+string(cf)+"#q"] = ""
 	var r *hbase.ResultRow
 	r, err = tx.(*themisTxn).client.Get(themisTestTableName, hbase.NewGet(row))
 	c.Assert(err, Equals, nil)
@@ -236,7 +233,7 @@ func isWrongRegionErr(err error) bool {
 
 func (s *TransactionTestSuit) TestBatchGet(c *C) {
 	batchGetTestTbl := "batch_get_test"
-	err := createNewTableAndDropOldTable(s.cli, batchGetTestTbl, cfName, [][]byte{
+	err := createNewTableAndDropOldTable(s.cli, batchGetTestTbl, string(cf), [][]byte{
 		// split in middle
 		[]byte("batch_test_5"),
 	})
@@ -244,8 +241,7 @@ func (s *TransactionTestSuit) TestBatchGet(c *C) {
 	// prepare data
 	tx := newTxn(s.cli)
 	for i := 0; i < 10; i++ {
-		p := hbase.NewPut([]byte(fmt.Sprintf("batch_test_%d", i)))
-		p.AddValue([]byte(cfName), []byte("q"), []byte("v"))
+		p := hbase.NewPut([]byte(fmt.Sprintf("batch_test_%d", i))).AddValue(cf, q, []byte("v"))
 		tx.Put(batchGetTestTbl, p)
 	}
 	err = tx.Commit()
@@ -254,13 +250,11 @@ func (s *TransactionTestSuit) TestBatchGet(c *C) {
 	// batch get
 	var gets []*hbase.Get
 	for i := 0; i < 10; i++ {
-		g := hbase.NewGet([]byte(fmt.Sprintf("batch_test_%d", i)))
-		g.AddColumn([]byte(cfName), []byte("q"))
+		g := hbase.NewGet([]byte(fmt.Sprintf("batch_test_%d", i))).AddColumn(cf, q)
 		gets = append(gets, g)
 	}
 	for i := 5; i < 10; i++ {
-		g := hbase.NewGet([]byte(fmt.Sprintf("batch_test_no_such_row_%d", i)))
-		g.AddColumn([]byte(cfName), []byte("q"))
+		g := hbase.NewGet([]byte(fmt.Sprintf("batch_test_no_such_row_%d", i))).AddColumn(cf, q)
 		gets = append(gets, g)
 	}
 	tx = newTxn(s.cli)
@@ -269,8 +263,7 @@ func (s *TransactionTestSuit) TestBatchGet(c *C) {
 
 	gets = nil
 	for i := 0; i < 5; i++ {
-		g := hbase.NewGet([]byte(fmt.Sprintf("batch_test_%d", i)))
-		g.AddColumn([]byte(cfName), []byte("q"))
+		g := hbase.NewGet([]byte(fmt.Sprintf("batch_test_%d", i))).AddColumn(cf, q)
 		gets = append(gets, g)
 	}
 	tx = newTxn(s.cli)
@@ -289,7 +282,7 @@ func (s *TransactionTestSuit) TestBatchGetWithLocks(c *C) {
 	// simulating broken commit
 	for i := 0; i < 10; i++ {
 		p := hbase.NewPut([]byte(fmt.Sprintf("batch_test_with_lock_%d", i)))
-		p.AddValue([]byte(cfName), []byte("q"), []byte(fmt.Sprintf("%d", ts)))
+		p.AddValue(cf, q, []byte(fmt.Sprintf("%d", ts)))
 		tx.Put(themisTestTableName, p)
 	}
 	tx.Commit()
@@ -298,8 +291,7 @@ func (s *TransactionTestSuit) TestBatchGetWithLocks(c *C) {
 
 	var gets []*hbase.Get
 	for i := 0; i < 10; i++ {
-		g := hbase.NewGet([]byte(fmt.Sprintf("batch_test_with_lock_%d", i)))
-		g.AddColumn([]byte(cfName), []byte("q"))
+		g := hbase.NewGet([]byte(fmt.Sprintf("batch_test_with_lock_%d", i))).AddColumn(cf, q)
 		gets = append(gets, g)
 	}
 	rs, err := tx.Gets(themisTestTableName, gets)
@@ -316,8 +308,7 @@ func (s *TransactionTestSuit) TestAsyncSecondaryCommit(c *C) {
 	}
 	tx := newTxn(s.cli).AddConfig(conf)
 	for i := 0; i < 10; i++ {
-		p := hbase.NewPut([]byte(fmt.Sprintf("async_commit_test_%d", i)))
-		p.AddValue([]byte(cfName), []byte("q"), []byte(fmt.Sprintf("%d", tx.GetStartTS())))
+		p := hbase.NewPut([]byte(fmt.Sprintf("async_commit_test_%d", i))).AddValue(cf, q, []byte(fmt.Sprintf("%d", tx.GetStartTS())))
 		tx.Put(themisTestTableName, p)
 	}
 	tx.Commit()

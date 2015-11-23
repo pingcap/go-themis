@@ -10,17 +10,20 @@ import (
 	"github.com/ngaut/log"
 	"github.com/pingcap/go-hbase"
 	"github.com/pingcap/go-hbase/proto"
+	"github.com/pingcap/go-themis/oracle"
 	"github.com/pingcap/tidb/kv"
 )
 
-func newThemisClient(client hbase.HBaseClient) *themisRPC {
+func newThemisRPC(client hbase.HBaseClient, conf TxnConfig) *themisRPC {
 	return &themisRPC{
 		client: client,
+		conf:   conf,
 	}
 }
 
 type themisRPC struct {
 	client hbase.HBaseClient
+	conf   TxnConfig
 }
 
 func (t *themisRPC) call(methodName string, tbl, row []byte, req pb.Message, resp pb.Message) error {
@@ -44,12 +47,10 @@ func (t *themisRPC) call(methodName string, tbl, row []byte, req pb.Message, res
 }
 
 func (t *themisRPC) checkAndSetLockIsExpired(lock Lock) (bool, error) {
-	b, err := t.isLockExpired(lock.Coordinate().Table, lock.Coordinate().Row, lock.Timestamp())
-	if err != nil {
-		return false, errors.Trace(err)
-	}
-	lock.SetExpired(b)
-	return b, nil
+	ts := lock.Timestamp() >> 18
+	expired := oracle.IsExpired(ts, t.conf.TTLInMs)
+	lock.SetExpired(expired)
+	return expired, nil
 }
 
 func (t *themisRPC) themisGet(tbl []byte, g *hbase.Get, startTs uint64, ignoreLock bool) (*hbase.ResultRow, error) {
