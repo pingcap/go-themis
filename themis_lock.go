@@ -11,20 +11,53 @@ import (
 )
 
 var (
-	_ ThemisLock = (*PrimaryLock)(nil)
-	_ ThemisLock = (*SecondaryLock)(nil)
+	_ Lock = (*themisPrimaryLock)(nil)
+	_ Lock = (*themisSecondaryLock)(nil)
 )
 
-type lock struct {
-	typ        hbase.Type
-	ts         uint64
-	wallTs     uint64
+type themisLock struct {
+	// lock coordinate, table, row, cf, q
+	coordinate *hbase.ColumnCoordinate
+	// lock type: put/delete/minimal(lock only)
+	typ hbase.Type
+	// prewrite ts
+	ts uint64
+	// not used, for alignment
+	wallTs uint64
+	// not used, for alignment
 	clientAddr string
 	expired    bool
-	column     *hbase.ColumnCoordinate
 }
 
-func (l *lock) write(w io.Writer) {
+func (l *themisLock) Timestamp() uint64 {
+	return l.ts
+}
+
+func (l *themisLock) IsExpired() bool {
+	return l.expired
+}
+
+func (l *themisLock) SetExpired(b bool) {
+	l.expired = b
+}
+
+func (l *themisLock) SetCoordinate(c *hbase.ColumnCoordinate) {
+	l.coordinate = c
+}
+
+func (l *themisLock) Coordinate() *hbase.ColumnCoordinate {
+	return l.coordinate
+}
+
+func (l *themisLock) Context() interface{} {
+	return nil
+}
+
+func (l *themisLock) Type() hbase.Type {
+	return l.typ
+}
+
+func (l *themisLock) write(w io.Writer) {
 	binary.Write(w, binary.BigEndian, byte(l.typ))
 	binary.Write(w, binary.BigEndian, int64(l.ts))
 	// write client addr
@@ -32,23 +65,7 @@ func (l *lock) write(w io.Writer) {
 	binary.Write(w, binary.BigEndian, int64(l.wallTs))
 }
 
-type ThemisLock interface {
-	getTimestamp() uint64
-	setExpired(bool)
-	isExpired() bool
-	isPrimary() bool
-	getPrimaryLock() ThemisLock
-	setColumn(col *hbase.ColumnCoordinate)
-	getColumn() *hbase.ColumnCoordinate
-	toBytes() []byte
-	parseField(r iohelper.ByteMultiReader) error
-}
-
-func (l *lock) getTimestamp() uint64 {
-	return l.ts
-}
-
-func (l *lock) parseField(r iohelper.ByteMultiReader) error {
+func (l *themisLock) parse(r iohelper.ByteMultiReader) error {
 	// read type
 	var typ uint8
 	err := binary.Read(r, binary.BigEndian, &typ)
@@ -68,7 +85,7 @@ func (l *lock) parseField(r iohelper.ByteMultiReader) error {
 	// read client addr
 	sz, err := binary.ReadUvarint(r)
 	if err != nil {
-		return err
+		return errors.Trace(err)
 	}
 	addr := make([]byte, sz)
 	r.Read(addr)
@@ -84,34 +101,36 @@ func (l *lock) parseField(r iohelper.ByteMultiReader) error {
 	return nil
 }
 
-func (l *lock) setColumn(col *hbase.ColumnCoordinate) {
-	l.column = col
-}
-
-func (l *lock) getColumn() *hbase.ColumnCoordinate {
-	return l.column
-}
-
-func (l *lock) setExpired(b bool) {
-	l.expired = b
-}
-
-func parseLockFromBytes(b []byte) (ThemisLock, error) {
+func parseLockFromBytes(b []byte) (Lock, error) {
 	buf := bytes.NewBuffer(b)
 	var isPrimary uint8
 	err := binary.Read(buf, binary.BigEndian, &isPrimary)
 	if err != nil {
 		return nil, errors.Trace(err)
 	}
-	var ret ThemisLock
+	var ret Lock
 	if isPrimary == 1 {
-		ret = newPrimaryLock()
+		l := newThemisPrimaryLock()
+		err = l.parse(buf)
+		ret = l
 	} else {
-		ret = newSecondaryLock()
+		l := newThemisSecondaryLock()
+		err = l.parse(buf)
+		ret = l
 	}
-	err = ret.parseField(buf)
 	if err != nil {
 		return nil, errors.Trace(err)
 	}
 	return ret, nil
+}
+
+func isLockResult(r *hbase.ResultRow) bool {
+	if len(r.SortedColumns) > 0 && isLockColumn(r.SortedColumns[0].Column) {
+		return true
+	}
+	return false
+}
+
+func isLockColumn(c hbase.Column) bool {
+	return bytes.Compare(c.Family, LockFamilyName) == 0
 }

@@ -10,11 +10,11 @@ import (
 
 type ThemisScanner struct {
 	scan *hbase.Scan
-	txn  *Txn
+	txn  *themisTxn
 	tbl  []byte
 }
 
-func newThemisScanner(tbl []byte, txn *Txn, batchSize int, c hbase.HBaseClient) *ThemisScanner {
+func newThemisScanner(tbl []byte, txn *themisTxn, batchSize int, c hbase.HBaseClient) *ThemisScanner {
 	s := hbase.NewScan(tbl, batchSize, c)
 	// add start ts
 	b := bytes.NewBuffer(nil)

@@ -5,8 +5,8 @@ import (
 	"strconv"
 	"sync"
 
-	"github.com/pingcap/go-hbase"
 	"github.com/ngaut/log"
+	"github.com/pingcap/go-hbase"
 	. "gopkg.in/check.v1"
 )
 
@@ -27,7 +27,7 @@ func (s *ParallelTestSuit) TestParallelHbaseCall(c *C) {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			tx := NewTxn(cli)
+			tx := newTxn(cli)
 			p := hbase.NewPut([]byte("test"))
 			p.AddValue([]byte(cfName), []byte("q"), []byte(strconv.Itoa(i)))
 			tx.Put(themisTestTableName, p)

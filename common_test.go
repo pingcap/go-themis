@@ -10,7 +10,8 @@ import (
 
 const (
 	themisTestTableName string = "themis_test"
-	cfName              string = "cf"
+	cf                  []byte = []byte("cf")
+	q                   []byte = []byte("q")
 )
 
 var (
