@@ -139,7 +139,7 @@ func (t *themisClientImpl) prewriteRow(tbl []byte, row []byte, mutations []*colu
 
 	commitTs := b.GetNewerWriteTs()
 	if commitTs != 0 {
-		log.Errorf("write conflict, encounter write with larger timestamp than prewriteTs=%d, commitTs=%d, row=%s", prewriteTs, commitTs, string(row))
+		log.Errorf("write conflict, encounter write with larger timestamp than prewriteTs=%d, commitTs=%d, row=%q", prewriteTs, commitTs, row)
 		return nil, kv.ErrLockConflict
 	}
 
