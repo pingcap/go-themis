@@ -4,12 +4,14 @@ import (
 	"bytes"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/juju/errors"
 	"github.com/ngaut/log"
 	"github.com/pingcap/go-hbase"
 	"github.com/pingcap/go-themis/oracle"
 	"github.com/pingcap/tidb/kv"
+	"github.com/pingcap/tidb/terror"
 )
 
 type TxnConfig struct {
@@ -51,8 +53,12 @@ type Txn struct {
 
 var (
 	// ErrSimulated is used when maybe rollback occurs error too.
-	ErrSimulated      = errors.New("Error: simulated error")
-	lockConfilctCount = 0
+	ErrSimulated           = errors.New("simulated error")
+	ErrLockNotExpired      = errors.New("lock not expired")
+	ErrCleanLockFailed     = errors.New("clean lock failed")
+	cleanLockMaxRetryCount = 30
+	pauseTime              = 300 * time.Millisecond
+	lockConfilctCount      = 0
 )
 
 func NewTxn(c hbase.HBaseClient, oracle oracle.Oracle) (*Txn, error) {
@@ -324,7 +330,7 @@ func (txn *Txn) constructLockAndClean(tbl []byte, lockKvs []*hbase.Kv) error {
 		return errors.Trace(err)
 	}
 	for _, lock := range locks {
-		err := txn.tryToCleanLock(lock)
+		err := txn.cleanLockWithRetry(lock)
 		if err != nil {
 			return errors.Trace(err)
 		}
@@ -363,13 +369,37 @@ func (txn *Txn) commitSecondaryAndCleanLock(lock *SecondaryLock, commitTs uint64
 	return nil
 }
 
+func (txn *Txn) cleanLockWithRetry(lock ThemisLock) error {
+	for i := 0; i < cleanLockMaxRetryCount; i++ {
+		if exists, err := txn.lockCleaner.isLockExisted(lock); err == nil && exists {
+			err := txn.tryToCleanLock(lock)
+			if err != nil && terror.ErrorEqual(err, ErrLockNotExpired) {
+				log.Warn("sleep a while, and retry clean lock")
+				// TODO(dongxu) use cleverer retry sleep time interval
+				time.Sleep(pauseTime)
+				continue
+			} else if err != nil {
+				return errors.Trace(err)
+			}
+			// lock cleaned successfully
+			return nil
+		} else if err != nil {
+			return errors.Trace(err)
+		} else {
+			// lock cleaned by other client
+			return nil
+		}
+	}
+	return ErrCleanLockFailed
+}
+
 func (txn *Txn) tryToCleanLock(lock ThemisLock) error {
 	// if it's secondary lock, first we'll check if its primary lock has been released.
 	if !lock.isPrimary() {
 		// get primary lock
 		pl := lock.getPrimaryLock()
 		// check primary lock is exists
-		exists, err := txn.lockCleaner.isPrimaryLockExisted(pl.(*PrimaryLock))
+		exists, err := txn.lockCleaner.isLockExisted(pl)
 		if err != nil {
 			return errors.Trace(err)
 		}
@@ -437,7 +467,7 @@ func (txn *Txn) tryToCleanLock(lock ThemisLock) error {
 			}
 		}
 	} else {
-		log.Warn("lock is not expired")
+		return ErrLockNotExpired
 	}
 	return nil
 }
@@ -452,7 +482,7 @@ func (txn *Txn) batchPrewriteSecondaryRowsWithLockClean(tbl []byte, rowMs map[st
 	if locks != nil && len(locks) > 0 {
 		// try one more time after clean lock successfully
 		for row, lock := range locks {
-			err = txn.tryToCleanLock(lock)
+			err = txn.cleanLockWithRetry(lock)
 			if err != nil {
 				return errors.Trace(err)
 			}
@@ -478,7 +508,7 @@ func (txn *Txn) prewriteRowWithLockClean(tbl []byte, mutation *rowMutation, cont
 	}
 	// lock clean
 	if lock != nil {
-		err = txn.tryToCleanLock(lock)
+		err = txn.cleanLockWithRetry(lock)
 		if err != nil {
 			return errors.Trace(err)
 		}
