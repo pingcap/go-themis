@@ -35,16 +35,16 @@ func (s *TransactionTestSuit) SetUpTest(c *C) {
 
 func (s *TransactionTestSuit) TestAsyncCommit(c *C) {
 	p := hbase.NewPut(testRow).AddValue(cf, q, []byte("val"))
-	tx := newTxn(s.cli)
+	tx := newTxn(s.cli, defaultTxnConf)
 	tx.Put(themisTestTableName, p)
 	tx.Commit()
 
-	tx = newTxn(s.cli)
+	tx = newTxn(s.cli, defaultTxnConf)
 	d := hbase.NewDelete([]byte("test")).AddColumn(cf, q)
 	tx.Delete(themisTestTableName, d)
 	tx.Commit()
 
-	tx = newTxn(s.cli)
+	tx = newTxn(s.cli, defaultTxnConf)
 	g := hbase.NewGet([]byte("test")).AddFamily(cf)
 	r, err := tx.Get(themisTestTableName, g)
 	c.Assert(err, Equals, nil)
@@ -54,7 +54,7 @@ func (s *TransactionTestSuit) TestAsyncCommit(c *C) {
 	conf := defaultTxnConf
 	conf.brokenCommitSecondaryTest = true
 
-	tx = newTxn(s.cli).AddConfig(conf)
+	tx = newTxn(s.cli, conf)
 	// simulating broken commit
 	for i := 0; i < 10; i++ {
 		p := hbase.NewPut([]byte(fmt.Sprintf("test_%d", i)))
@@ -75,7 +75,7 @@ func (s *TransactionTestSuit) TestAsyncCommit(c *C) {
 
 	log.Warn("Try commit again")
 	// new transction will not see lock
-	tx = newTxn(s.cli)
+	tx = newTxn(s.cli, defaultTxnConf)
 	for i := 0; i < 5; i++ {
 		p := hbase.NewPut([]byte(fmt.Sprintf("test_%d", i)))
 		p.AddValue(cf, q, []byte(fmt.Sprintf("%d", tx.(*themisTxn).GetStartTS())))
@@ -87,7 +87,7 @@ func (s *TransactionTestSuit) TestAsyncCommit(c *C) {
 	}
 	c.Assert(err, Equals, nil)
 
-	tx = newTxn(s.cli)
+	tx = newTxn(s.cli, defaultTxnConf)
 	for i := 5; i < 10; i++ {
 		p := hbase.NewPut([]byte(fmt.Sprintf("test_%d", i)))
 		p.AddValue(cf, q, []byte(fmt.Sprintf("%d", tx.(*themisTxn).GetStartTS())))
@@ -102,7 +102,7 @@ func (s *TransactionTestSuit) TestAsyncCommit(c *C) {
 }
 
 func (s *TransactionTestSuit) TestBrokenPrewriteSecondary(c *C) {
-	tx := newTxn(s.cli)
+	tx := newTxn(s.cli, defaultTxnConf)
 	ts := tx.(*themisTxn).GetStartTS()
 	// simulating broken commit
 	for i := 0; i < 10; i++ {
@@ -117,7 +117,7 @@ func (s *TransactionTestSuit) TestBrokenPrewriteSecondary(c *C) {
 	conf := defaultTxnConf
 	conf.brokenPrewriteSecondaryTest = true
 
-	tx = newTxn(s.cli).AddConfig(conf)
+	tx = newTxn(s.cli, conf)
 	ts = tx.GetStartTS()
 	// simulating broken commit
 	for i := 0; i < 10; i++ {
@@ -129,7 +129,7 @@ func (s *TransactionTestSuit) TestBrokenPrewriteSecondary(c *C) {
 	c.Assert(err, NotNil)
 
 	// check if locks are cleaned successfully
-	tx = newTxn(s.cli)
+	tx = newTxn(s.cli, defaultTxnConf)
 	for i := 0; i < 10; i++ {
 		g := hbase.NewGet([]byte(fmt.Sprintf("test_%d", i)))
 		r, err := tx.Get(themisTestTableName, g)
@@ -144,7 +144,7 @@ func (s *TransactionTestSuit) TestPrimaryLockTimeout(c *C) {
 	conf := defaultTxnConf
 	conf.brokenPrewriteSecondaryTest = true
 	conf.brokenPrewriteSecondaryAndRollbackTest = true
-	tx := newTxn(s.cli).AddConfig(conf)
+	tx := newTxn(s.cli, conf)
 	ts := tx.GetStartTS()
 	// simulating broken commit
 	for i := 0; i < 2; i++ {
@@ -166,7 +166,7 @@ func (s *TransactionTestSuit) TestPrimaryLockTimeout(c *C) {
 	}
 
 	// check if locks are cleaned successfully
-	tx = newTxn(s.cli)
+	tx = newTxn(s.cli, defaultTxnConf)
 	for i := 0; i < 2; i++ {
 		g := hbase.NewGet([]byte(fmt.Sprintf("test_%d", i)))
 		r, err := tx.Get(themisTestTableName, g)
@@ -178,7 +178,7 @@ func (s *TransactionTestSuit) TestPrimaryLockTimeout(c *C) {
 }
 
 func checkCommitSuccess(s *TransactionTestSuit, c *C, row []byte) {
-	tx := newTxn(s.cli)
+	tx := newTxn(s.cli, defaultTxnConf)
 	colMap := make(map[string]string)
 	colMap["#p:"+string(cf)+"#q"] = ""
 	colMap[string(cf)+":q"] = ""
@@ -192,7 +192,7 @@ func checkCommitSuccess(s *TransactionTestSuit, c *C, row []byte) {
 }
 
 func (s *TransactionTestSuit) TestLockRow(c *C) {
-	tx := newTxn(s.cli)
+	tx := newTxn(s.cli, defaultTxnConf)
 	row := []byte("lockRow")
 	put := hbase.NewPut(row)
 	put.AddValue(cf, q, []byte("v"))
@@ -201,7 +201,7 @@ func (s *TransactionTestSuit) TestLockRow(c *C) {
 
 	checkCommitSuccess(s, c, row)
 
-	tx = newTxn(s.cli)
+	tx = newTxn(s.cli, defaultTxnConf)
 	err := tx.LockRow(themisTestTableName, row)
 	c.Assert(err, Equals, nil)
 
@@ -237,7 +237,7 @@ func (s *TransactionTestSuit) TestBatchGet(c *C) {
 	})
 	defer dropTable(s.cli, batchGetTestTbl)
 	// prepare data
-	tx := newTxn(s.cli)
+	tx := newTxn(s.cli, defaultTxnConf)
 	for i := 0; i < 10; i++ {
 		p := hbase.NewPut([]byte(fmt.Sprintf("batch_test_%d", i))).AddValue(cf, q, []byte("v"))
 		tx.Put(batchGetTestTbl, p)
@@ -255,7 +255,7 @@ func (s *TransactionTestSuit) TestBatchGet(c *C) {
 		g := hbase.NewGet([]byte(fmt.Sprintf("batch_test_no_such_row_%d", i))).AddColumn(cf, q)
 		gets = append(gets, g)
 	}
-	tx = newTxn(s.cli)
+	tx = newTxn(s.cli, defaultTxnConf)
 	_, err = tx.Gets(batchGetTestTbl, gets)
 	c.Assert(isWrongRegionErr(err), Equals, true)
 
@@ -264,7 +264,7 @@ func (s *TransactionTestSuit) TestBatchGet(c *C) {
 		g := hbase.NewGet([]byte(fmt.Sprintf("batch_test_%d", i))).AddColumn(cf, q)
 		gets = append(gets, g)
 	}
-	tx = newTxn(s.cli)
+	tx = newTxn(s.cli, defaultTxnConf)
 	rs, err := tx.Gets(batchGetTestTbl, gets)
 	c.Assert(err, IsNil)
 	c.Assert(len(rs), Equals, 5)
@@ -275,7 +275,7 @@ func (s *TransactionTestSuit) TestBatchGetWithLocks(c *C) {
 	conf := defaultTxnConf
 	conf.brokenCommitSecondaryTest = true
 
-	tx := newTxn(s.cli).AddConfig(conf)
+	tx := newTxn(s.cli, conf)
 	ts := tx.GetStartTS()
 	// simulating broken commit
 	for i := 0; i < 10; i++ {
@@ -285,7 +285,7 @@ func (s *TransactionTestSuit) TestBatchGetWithLocks(c *C) {
 	}
 	tx.Commit()
 
-	tx = newTxn(s.cli)
+	tx = newTxn(s.cli, defaultTxnConf)
 
 	var gets []*hbase.Get
 	for i := 0; i < 10; i++ {
@@ -301,18 +301,39 @@ func (s *TransactionTestSuit) TestBatchGetWithLocks(c *C) {
 func (s *TransactionTestSuit) TestAsyncSecondaryCommit(c *C) {
 	conf := defaultTxnConf
 	conf.brokenCommitSecondaryTest = true
-	tx := newTxn(s.cli).AddConfig(conf)
+	tx := newTxn(s.cli, conf)
 	for i := 0; i < 10; i++ {
 		p := hbase.NewPut([]byte(fmt.Sprintf("async_commit_test_%d", i))).AddValue(cf, q, []byte(fmt.Sprintf("%d", tx.GetStartTS())))
 		tx.Put(themisTestTableName, p)
 	}
 	tx.Commit()
 
-	tx = newTxn(s.cli).AddConfig(conf)
+	tx = newTxn(s.cli, conf)
 	for i := 0; i < 10; i++ {
 		g := hbase.NewGet([]byte(fmt.Sprintf("async_commit_test_%d", i)))
 		rs, err := tx.Get(themisTestTableName, g)
 		c.Assert(err, IsNil)
 		c.Assert(len(rs.SortedColumns), Greater, 0)
 	}
+}
+
+func (s *TransactionTestSuit) TestTTL(c *C) {
+	conf := defaultTxnConf
+	conf.brokenCommitPrimaryTest = true
+	tx := newTxn(s.cli, conf)
+	p := hbase.NewPut(testRow).AddValue(cf, q, []byte("val"))
+	tx.Put(themisTestTableName, p)
+	tx.Commit()
+
+	startTs := time.Now()
+	conf = defaultTxnConf
+	conf.TTLInMs = 1000
+	tx = newTxn(s.cli, conf)
+	rs, err := tx.Get(themisTestTableName, hbase.NewGet(testRow).AddColumn(cf, q))
+	c.Assert(time.Since(startTs).Seconds(), Greater, float64(1))
+	c.Assert(time.Since(startTs).Seconds(), Less, float64(1.5))
+	// transction timeout, alreay rolled back.
+	c.Assert(rs, IsNil)
+	c.Assert(err, IsNil)
+	tx.Commit()
 }

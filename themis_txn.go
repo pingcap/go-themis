@@ -49,7 +49,7 @@ type themisTxn struct {
 	primaryRowOffset   int
 	singleRowTxn       bool
 	secondaryLockBytes []byte
-	conf               *TxnConfig
+	conf               TxnConfig
 }
 
 var _ Txn = (*themisTxn)(nil)
@@ -63,26 +63,25 @@ var (
 )
 
 func NewTxn(c hbase.HBaseClient, oracle oracle.Oracle) (Txn, error) {
+	return NewTxnWithConf(c, defaultTxnConf, oracle)
+}
+
+func NewTxnWithConf(c hbase.HBaseClient, conf TxnConfig, oracle oracle.Oracle) (Txn, error) {
 	var err error
 	txn := &themisTxn{
 		client:           c,
 		mutationCache:    newColumnMutationCache(),
 		oracle:           oracle,
 		primaryRowOffset: -1,
-		conf:             &defaultTxnConf,
+		conf:             conf,
+		rpc:              newThemisRPC(c, conf),
 	}
 	txn.startTs, err = txn.oracle.GetTimestamp()
 	if err != nil {
 		return nil, errors.Trace(err)
 	}
-	txn.rpc = newThemisRPC(c, txn.conf)
 	txn.lockCleaner = newThemisLockManager(txn.rpc, c)
 	return txn, nil
-}
-
-func (txn *themisTxn) AddConfig(conf TxnConfig) Txn {
-	txn.conf = &conf
-	return txn
 }
 
 func (txn *themisTxn) Gets(tbl string, gets []*hbase.Get) ([]*hbase.ResultRow, error) {

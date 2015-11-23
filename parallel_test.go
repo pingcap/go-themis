@@ -27,7 +27,7 @@ func (s *ParallelTestSuit) TestParallelHbaseCall(c *C) {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			tx := newTxn(cli)
+			tx := newTxn(cli, defaultTxnConf)
 			p := hbase.NewPut(testRow)
 			p.AddValue(cf, q, []byte(strconv.Itoa(i)))
 			tx.Put(themisTestTableName, p)

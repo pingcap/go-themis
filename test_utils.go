@@ -23,8 +23,8 @@ var (
 	zk = flag.String("zk", "localhost", "hbase zookeeper info")
 )
 
-func newTxn(c hbase.HBaseClient) Txn {
-	txn, err := NewTxn(c, oracles.NewLocalOracle())
+func newTxn(c hbase.HBaseClient, cfg TxnConfig) Txn {
+	txn, err := NewTxnWithConf(c, cfg, oracles.NewLocalOracle())
 	if err != nil {
 		log.Fatal(err)
 	}

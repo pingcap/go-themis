@@ -17,7 +17,6 @@ type Txn interface {
 	LockRow(t string, row []byte) error
 	Put(t string, put *hbase.Put)
 	Delete(t string, del *hbase.Delete) error
-	AddConfig(TxnConfig) Txn
 	Commit() error
 	GetStartTS() uint64
 	GetCommitTS() uint64
