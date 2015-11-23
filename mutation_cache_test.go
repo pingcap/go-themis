@@ -3,9 +3,9 @@ package themis
 import (
 	"bytes"
 
-	"github.com/pingcap/go-hbase"
 	"github.com/ngaut/log"
-	. "gopkg.in/check.v1"
+	. "github.com/pingcap/check"
+	"github.com/pingcap/go-hbase"
 )
 
 type MutationCacheTestSuit struct{}

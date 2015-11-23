@@ -9,8 +9,8 @@ import (
 	"github.com/juju/errors"
 
 	"github.com/ngaut/log"
+	. "github.com/pingcap/check"
 	"github.com/pingcap/go-hbase"
-	. "gopkg.in/check.v1"
 )
 
 type TransactionTestSuit struct {
@@ -30,7 +30,7 @@ func (s *TransactionTestSuit) SetUpSuite(c *C) {
 func (s *TransactionTestSuit) SetUpTest(c *C) {
 	log.Warn("new test, reset tables")
 	err := createNewTableAndDropOldTable(s.cli, themisTestTableName, string(cf), nil)
-	c.Assert(err, Equals, nil)
+	c.Assert(err, IsNil)
 }
 
 func (s *TransactionTestSuit) TestAsyncCommit(c *C) {
@@ -48,7 +48,7 @@ func (s *TransactionTestSuit) TestAsyncCommit(c *C) {
 	g := hbase.NewGet([]byte("test")).AddFamily(cf)
 	r, err := tx.Get(themisTestTableName, g)
 	c.Assert(err, Equals, nil)
-	c.Assert(r == nil, Equals, true)
+	c.Assert(r, IsNil)
 	tx.Commit()
 
 	conf := defaultTxnConf
@@ -111,7 +111,7 @@ func (s *TransactionTestSuit) TestBrokenPrewriteSecondary(c *C) {
 		tx.Put(themisTestTableName, p)
 	}
 	err := tx.Commit()
-	c.Assert(err, Equals, nil)
+	c.Assert(err, IsNil)
 
 	// TODO: check rallback & cleanup locks
 	conf := defaultTxnConf
@@ -313,6 +313,6 @@ func (s *TransactionTestSuit) TestAsyncSecondaryCommit(c *C) {
 		g := hbase.NewGet([]byte(fmt.Sprintf("async_commit_test_%d", i)))
 		rs, err := tx.Get(themisTestTableName, g)
 		c.Assert(err, IsNil)
-		c.Assert(len(rs.SortedColumns) > 0, Equals, true)
+		c.Assert(len(rs.SortedColumns), Greater, 0)
 	}
 }

@@ -6,8 +6,8 @@ import (
 	"sync"
 
 	"github.com/ngaut/log"
+	. "github.com/pingcap/check"
 	"github.com/pingcap/go-hbase"
-	. "gopkg.in/check.v1"
 )
 
 type ParallelTestSuit struct{}

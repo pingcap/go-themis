@@ -725,16 +725,12 @@ func (txn *themisTxn) LockRow(tbl string, rowkey []byte) error {
 		log.Warnf("get row error, table:%s, row:%q, error:%v", tbl, rowkey, err)
 		return errors.Trace(err)
 	}
-
 	if r == nil {
 		log.Warnf("has not data to lock, table:%s, row:%q", tbl, rowkey)
 		return nil
 	}
-
 	for _, v := range r.Columns {
-		//if cache has data, then don't replace
 		txn.mutationCache.addMutation([]byte(tbl), rowkey, &v.Column, hbase.TypeMinimum, nil, true)
 	}
-
 	return nil
 }
