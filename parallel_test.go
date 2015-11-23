@@ -36,10 +36,10 @@ func (s *ParallelTestSuit) TestParallelHbaseCall(c *C) {
 	}
 	wg.Wait()
 
-	g := hbase.NewGet([]byte("test")).AddColumn(cf, q)
-	_, err = cli.Get(themisTestTableName, g)
+	g := hbase.NewGet(testRow).AddColumn(cf, q)
+	rs, err := cli.Get(themisTestTableName, g)
 	if err != nil {
 		log.Fatal(err)
 	}
-	//log.Info(string(rs.SortedColumns[0].Value))
+	log.Info(string(rs.SortedColumns[0].Value))
 }

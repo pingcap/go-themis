@@ -28,6 +28,7 @@ func (s *TransactionTestSuit) SetUpSuite(c *C) {
 }
 
 func (s *TransactionTestSuit) SetUpTest(c *C) {
+	log.Warn("new test, reset tables")
 	err := createNewTableAndDropOldTable(s.cli, themisTestTableName, string(cf), nil)
 	c.Assert(err, Equals, nil)
 }
@@ -50,10 +51,8 @@ func (s *TransactionTestSuit) TestAsyncCommit(c *C) {
 	c.Assert(r == nil, Equals, true)
 	tx.Commit()
 
-	conf := TxnConfig{
-		ConcurrentPrewriteAndCommit: true,
-		brokenCommitSecondaryTest:   true,
-	}
+	conf := defaultTxnConf
+	conf.brokenCommitSecondaryTest = true
 
 	tx = newTxn(s.cli).AddConfig(conf)
 	// simulating broken commit
@@ -115,9 +114,9 @@ func (s *TransactionTestSuit) TestBrokenPrewriteSecondary(c *C) {
 	c.Assert(err, Equals, nil)
 
 	// TODO: check rallback & cleanup locks
-	conf := TxnConfig{
-		brokenPrewriteSecondaryTest: true,
-	}
+	conf := defaultTxnConf
+	conf.brokenPrewriteSecondaryTest = true
+
 	tx = newTxn(s.cli).AddConfig(conf)
 	ts = tx.GetStartTS()
 	// simulating broken commit
@@ -142,10 +141,9 @@ func (s *TransactionTestSuit) TestBrokenPrewriteSecondary(c *C) {
 func (s *TransactionTestSuit) TestPrimaryLockTimeout(c *C) {
 	// TODO: check if lock can be cleaned up when secondary prewrite failed and
 	// rollback is also failed
-	conf := TxnConfig{
-		brokenPrewriteSecondaryTest:            true,
-		brokenPrewriteSecondaryAndRollbackTest: true,
-	}
+	conf := defaultTxnConf
+	conf.brokenPrewriteSecondaryTest = true
+	conf.brokenPrewriteSecondaryAndRollbackTest = true
 	tx := newTxn(s.cli).AddConfig(conf)
 	ts := tx.GetStartTS()
 	// simulating broken commit
@@ -274,9 +272,9 @@ func (s *TransactionTestSuit) TestBatchGet(c *C) {
 
 func (s *TransactionTestSuit) TestBatchGetWithLocks(c *C) {
 	// simulating locks
-	conf := TxnConfig{
-		brokenCommitSecondaryTest: true,
-	}
+	conf := defaultTxnConf
+	conf.brokenCommitSecondaryTest = true
+
 	tx := newTxn(s.cli).AddConfig(conf)
 	ts := tx.GetStartTS()
 	// simulating broken commit
@@ -301,11 +299,8 @@ func (s *TransactionTestSuit) TestBatchGetWithLocks(c *C) {
 }
 
 func (s *TransactionTestSuit) TestAsyncSecondaryCommit(c *C) {
-	conf := TxnConfig{
-		WaitSecondaryCommit:         false,
-		ConcurrentPrewriteAndCommit: true,
-		brokenCommitSecondaryTest:   true,
-	}
+	conf := defaultTxnConf
+	conf.brokenCommitSecondaryTest = true
 	tx := newTxn(s.cli).AddConfig(conf)
 	for i := 0; i < 10; i++ {
 		p := hbase.NewPut([]byte(fmt.Sprintf("async_commit_test_%d", i))).AddValue(cf, q, []byte(fmt.Sprintf("%d", tx.GetStartTS())))
@@ -318,6 +313,6 @@ func (s *TransactionTestSuit) TestAsyncSecondaryCommit(c *C) {
 		g := hbase.NewGet([]byte(fmt.Sprintf("async_commit_test_%d", i)))
 		rs, err := tx.Get(themisTestTableName, g)
 		c.Assert(err, IsNil)
-		log.Info(rs)
+		c.Assert(len(rs.SortedColumns) > 0, Equals, true)
 	}
 }

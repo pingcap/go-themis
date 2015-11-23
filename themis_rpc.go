@@ -14,7 +14,7 @@ import (
 	"github.com/pingcap/tidb/kv"
 )
 
-func newThemisRPC(client hbase.HBaseClient, conf TxnConfig) *themisRPC {
+func newThemisRPC(client hbase.HBaseClient, conf *TxnConfig) *themisRPC {
 	return &themisRPC{
 		client: client,
 		conf:   conf,
@@ -23,7 +23,7 @@ func newThemisRPC(client hbase.HBaseClient, conf TxnConfig) *themisRPC {
 
 type themisRPC struct {
 	client hbase.HBaseClient
-	conf   TxnConfig
+	conf   *TxnConfig
 }
 
 func (t *themisRPC) call(methodName string, tbl, row []byte, req pb.Message, resp pb.Message) error {

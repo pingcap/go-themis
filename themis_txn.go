@@ -49,7 +49,7 @@ type themisTxn struct {
 	primaryRowOffset   int
 	singleRowTxn       bool
 	secondaryLockBytes []byte
-	conf               TxnConfig
+	conf               *TxnConfig
 }
 
 var _ Txn = (*themisTxn)(nil)
@@ -69,19 +69,19 @@ func NewTxn(c hbase.HBaseClient, oracle oracle.Oracle) (Txn, error) {
 		mutationCache:    newColumnMutationCache(),
 		oracle:           oracle,
 		primaryRowOffset: -1,
-		conf:             defaultTxnConf,
-		rpc:              newThemisRPC(c, defaultTxnConf),
+		conf:             &defaultTxnConf,
 	}
 	txn.startTs, err = txn.oracle.GetTimestamp()
 	if err != nil {
 		return nil, errors.Trace(err)
 	}
+	txn.rpc = newThemisRPC(c, txn.conf)
 	txn.lockCleaner = newThemisLockManager(txn.rpc, c)
 	return txn, nil
 }
 
 func (txn *themisTxn) AddConfig(conf TxnConfig) Txn {
-	txn.conf = conf
+	txn.conf = &conf
 	return txn
 }
 
@@ -329,7 +329,6 @@ func (txn *themisTxn) tryToCleanLockAndGetAgain(tbl []byte, g *hbase.Get, lockKv
 	}
 	// get again, ignore lock
 	r, err := txn.rpc.themisGet([]byte(tbl), g, txn.startTs, true)
-	log.Info("get again, ignore lock", txn.startTs, r)
 	if err != nil {
 		return nil, errors.Trace(err)
 	}
@@ -387,7 +386,6 @@ func (txn *themisTxn) tryToCleanLock(lock Lock) error {
 			return errors.Trace(err)
 		}
 		if !exists {
-			log.Info("primary lock not found")
 			// primary row is committed, commit this row
 			cc := pl.Coordinate()
 			commitTs, err := txn.lockCleaner.GetCommitTimestamp(cc, pl.Timestamp())
@@ -400,6 +398,7 @@ func (txn *themisTxn) tryToCleanLock(lock Lock) error {
 				// commit secondary row
 				return txn.commitSecondaryAndCleanLock(lock.(*themisSecondaryLock), commitTs)
 			}
+			log.Info("primary lock not found, may have already rolled back")
 		}
 	}
 	expired, err := txn.rpc.checkAndSetLockIsExpired(lock)
