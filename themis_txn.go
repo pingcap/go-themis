@@ -157,7 +157,7 @@ func (txn *themisTxn) Commit() error {
 	if err != nil {
 		// no need to check wrong region here, hbase client will retry when
 		// occurs single row NotInRegion error.
-		log.Error(err)
+		log.Error(errors.ErrorStack(err))
 		// it's safe to retry, because this transaction is not committed.
 		return kv.ErrRetryable
 	}
@@ -174,13 +174,13 @@ func (txn *themisTxn) Commit() error {
 
 	txn.commitTs, err = txn.oracle.GetTimestamp()
 	if err != nil {
-		log.Error(err)
+		log.Error(errors.ErrorStack(err))
 		return kv.ErrRetryable
 	}
 	err = txn.commitPrimary()
 	if err != nil {
 		// commit primary error, rollback
-		log.Error(err)
+		log.Error(errors.ErrorStack(err))
 		txn.rollbackRow(txn.primaryRow.tbl, txn.primaryRow)
 		txn.rollbackSecondaryRow(len(txn.secondaryRows) - 1)
 		return kv.ErrRetryable
