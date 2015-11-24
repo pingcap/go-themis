@@ -20,11 +20,12 @@ var (
 )
 
 var (
-	zk = flag.String("zk", "localhost", "hbase zookeeper info")
+	zk           = flag.String("zk", "localhost", "hbase zookeeper info")
+	globalOracle = oracles.NewLocalOracle()
 )
 
 func newTxn(c hbase.HBaseClient, cfg TxnConfig) Txn {
-	txn, err := NewTxnWithConf(c, cfg, oracles.NewLocalOracle())
+	txn, err := NewTxnWithConf(c, cfg, globalOracle)
 	if err != nil {
 		log.Fatal(err)
 	}

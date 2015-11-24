@@ -28,7 +28,7 @@ func (s *ParallelTestSuit) TestParallelHbaseCall(c *C) {
 		go func(i int) {
 			defer wg.Done()
 			tx := newTxn(cli, defaultTxnConf)
-			p := hbase.NewPut(testRow)
+			p := hbase.NewPut(getTestRowKey(c))
 			p.AddValue(cf, q, []byte(strconv.Itoa(i)))
 			tx.Put(themisTestTableName, p)
 			tx.Commit()
@@ -36,7 +36,7 @@ func (s *ParallelTestSuit) TestParallelHbaseCall(c *C) {
 	}
 	wg.Wait()
 
-	g := hbase.NewGet(testRow).AddColumn(cf, q)
+	g := hbase.NewGet(getTestRowKey(c)).AddColumn(cf, q)
 	rs, err := cli.Get(themisTestTableName, g)
 	if err != nil {
 		log.Fatal(err)

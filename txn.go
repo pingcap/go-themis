@@ -9,6 +9,7 @@ import (
 var (
 	ErrLockNotExpired  = errors.New("lock not expired")
 	ErrCleanLockFailed = errors.New("clean lock failed")
+	ErrWrongRegion     = errors.New("wrong region, please retry")
 )
 
 type Txn interface {
