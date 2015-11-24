@@ -2,7 +2,6 @@ package themis
 
 import (
 	"fmt"
-	"strings"
 	"testing"
 	"time"
 
@@ -223,10 +222,6 @@ func (s *TransactionTestSuit) TestLockRow(c *C) {
 	tx.(*themisTxn).commitTs = tx.GetStartTS() + 1
 	tx.(*themisTxn).commitPrimary()
 	checkCommitSuccess(s, c, row)
-}
-
-func isWrongRegionErr(err error) bool {
-	return strings.Contains(err.Error(), "org.apache.hadoop.hbase.regionserver.WrongRegionException")
 }
 
 func (s *TransactionTestSuit) TestBatchGet(c *C) {

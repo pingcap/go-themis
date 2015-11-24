@@ -1,5 +1,7 @@
 package themis
 
+import "strings"
+
 var (
 	PutFamilyName  = []byte("#p")
 	DelFamilyName  = []byte("#d")
@@ -9,3 +11,7 @@ var (
 const (
 	ThemisServiceName string = "ThemisService"
 )
+
+func isWrongRegionErr(err error) bool {
+	return strings.Contains(err.Error(), "org.apache.hadoop.hbase.regionserver.WrongRegionException")
+}

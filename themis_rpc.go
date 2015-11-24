@@ -202,7 +202,10 @@ func (rpc *themisRPC) commitRow(tbl, row []byte, mutations []*columnMutation,
 	}
 	ok := res.GetResult()
 	if !ok {
-		return errors.New(fmt.Sprintf("commit failed, tbl: %s row: %s ts: %d", tbl, row, commitTs))
+		if primaryOffset == -1 {
+			return errors.Errorf("commit secondary failed, tbl: %s row: %s ts: %d", tbl, row, commitTs)
+		}
+		return errors.Errorf("commit primary failed, tbl: %s row: %s ts: %d", tbl, row, commitTs)
 	}
 	return nil
 }

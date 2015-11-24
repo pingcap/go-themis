@@ -160,6 +160,12 @@ func (txn *themisTxn) Commit() error {
 
 	err = txn.prewriteSecondary()
 	if err != nil {
+		if isWrongRegionErr(err) {
+			log.Warn("region info outdated")
+			// reset hbase client buffered region info
+			txn.client.CleanAllRegionCache()
+			return ErrWrongRegion
+		}
 		return errors.Trace(err)
 	}
 
@@ -218,7 +224,10 @@ func (txn *themisTxn) batchCommitSecondary(wait bool) {
 			if err != nil {
 				// fail of secondary commit will not stop the commits of next
 				// secondaries
-				log.Error(err)
+				if isWrongRegionErr(err) {
+					txn.client.CleanAllRegionCache()
+					log.Warn("region info outdated when committing secondary rows, don't panic")
+				}
 			}
 		}(txn.rpc, string(firstRowM.tbl), regionRowMap, txn.startTs, txn.commitTs)
 	}
@@ -481,7 +490,7 @@ func (txn *themisTxn) batchPrewriteSecondaryRowsWithLockClean(tbl []byte, rowMs 
 func (txn *themisTxn) prewriteRowWithLockClean(tbl []byte, mutation *rowMutation, containPrimary bool) error {
 	lock, err := txn.prewriteRow(tbl, mutation, containPrimary)
 	if err != nil {
-		return err
+		return errors.Trace(err)
 	}
 	// lock clean
 	if lock != nil {
@@ -612,7 +621,7 @@ func (txn *themisTxn) batchPrewriteSecondaries() error {
 
 	if len(errChan) != 0 {
 		// occur error, clean success prewrite mutations
-		log.Warning("batch prewrite secondary rows error, rolling back", len(successChan))
+		log.Warn("batch prewrite secondary rows error, rolling back", len(successChan))
 		txn.rollbackRow(txn.primaryRow.tbl, txn.primaryRow)
 	L:
 		for {
