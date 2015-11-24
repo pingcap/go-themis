@@ -49,8 +49,7 @@ func (rpc *themisRPC) call(methodName string, tbl, row []byte, req pb.Message, r
 }
 
 func (rpc *themisRPC) checkAndSetLockIsExpired(lock Lock) (bool, error) {
-	ts := lock.Timestamp() >> 18
-	expired := rpc.oracle.IsExpired(ts, rpc.conf.TTLInMs)
+	expired := rpc.oracle.IsExpired(lock.Timestamp(), rpc.conf.TTLInMs)
 	lock.SetExpired(expired)
 	return expired, nil
 }

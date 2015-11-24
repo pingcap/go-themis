@@ -22,7 +22,8 @@ func NewLocalOracle() oracle.Oracle {
 	return &localOracle{}
 }
 
-func (l *localOracle) IsExpired(beginMs uint64, TTL uint64) bool {
+func (l *localOracle) IsExpired(lockTs uint64, TTL uint64) bool {
+	beginMs := lockTs >> epochShiftBits
 	return uint64(time.Now().UnixNano()/int64(time.Millisecond)) >= (beginMs + TTL)
 }
 

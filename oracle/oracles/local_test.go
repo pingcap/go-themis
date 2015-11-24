@@ -23,12 +23,12 @@ func TestLocalOracle(t *testing.T) {
 
 func TestExpired(t *testing.T) {
 	o := NewLocalOracle()
-	beginMs := time.Now().UnixNano() / int64(time.Millisecond)
+	ts, _ := o.GetTimestamp()
 	time.Sleep(1 * time.Second)
-	if !o.IsExpired(uint64(beginMs), 500) {
+	if !o.IsExpired(uint64(ts), 500) {
 		t.Error("should expired")
 	}
-	if o.IsExpired(uint64(beginMs), 2000) {
+	if o.IsExpired(uint64(ts), 2000) {
 		t.Error("should not expired")
 	}
 }
