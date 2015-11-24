@@ -22,6 +22,10 @@ func NewLocalOracle() oracle.Oracle {
 	return &localOracle{}
 }
 
+func (l *localOracle) IsExpired(beginMs uint64, TTL uint64) bool {
+	return uint64(time.Now().UnixNano()/int64(time.Millisecond)) >= (beginMs + TTL)
+}
+
 func (l *localOracle) GetTimestamp() (uint64, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()

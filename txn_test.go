@@ -337,3 +337,34 @@ func (s *TransactionTestSuit) TestTTL(c *C) {
 	c.Assert(err, IsNil)
 	tx.Commit()
 }
+
+type mockOracle struct {
+	tick uint64
+}
+
+func (o *mockOracle) GetTimestamp() (uint64, error) {
+	return o.tick, nil
+}
+
+func (o *mockOracle) IsExpired(beginMs uint64, TTL uint64) bool {
+	return false
+}
+
+func (s *TransactionTestSuit) TestPhantomRead(c *C) {
+	o := &mockOracle{}
+
+	conf := defaultTxnConf
+	conf.brokenCommitPrimaryTest = true
+	o.tick = 1
+	tx, _ := NewTxnWithConf(s.cli, conf, o)
+	p := hbase.NewPut(testRow).AddValue(cf, q, []byte("val"))
+	o.tick = 3
+	tx.Put(themisTestTableName, p)
+	tx.Commit()
+
+	o.tick = 2
+	tx, _ = NewTxn(s.cli, o)
+	rs, err := tx.Get(themisTestTableName, hbase.NewGet(testRow).AddColumn(cf, q))
+	c.Assert(err, NotNil)
+	c.Assert(rs, IsNil)
+}

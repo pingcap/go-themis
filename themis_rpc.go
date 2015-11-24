@@ -14,16 +14,18 @@ import (
 	"github.com/pingcap/tidb/kv"
 )
 
-func newThemisRPC(client hbase.HBaseClient, conf TxnConfig) *themisRPC {
+func newThemisRPC(client hbase.HBaseClient, oracle oracle.Oracle, conf TxnConfig) *themisRPC {
 	return &themisRPC{
 		client: client,
 		conf:   conf,
+		oracle: oracle,
 	}
 }
 
 type themisRPC struct {
 	client hbase.HBaseClient
 	conf   TxnConfig
+	oracle oracle.Oracle
 }
 
 func (rpc *themisRPC) call(methodName string, tbl, row []byte, req pb.Message, resp pb.Message) error {
@@ -48,7 +50,7 @@ func (rpc *themisRPC) call(methodName string, tbl, row []byte, req pb.Message, r
 
 func (rpc *themisRPC) checkAndSetLockIsExpired(lock Lock) (bool, error) {
 	ts := lock.Timestamp() >> 18
-	expired := oracle.IsExpired(ts, rpc.conf.TTLInMs)
+	expired := rpc.oracle.IsExpired(ts, rpc.conf.TTLInMs)
 	lock.SetExpired(expired)
 	return expired, nil
 }

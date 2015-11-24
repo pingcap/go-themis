@@ -59,7 +59,6 @@ var (
 	ErrSimulated           = errors.New("simulated error")
 	cleanLockMaxRetryCount = 30
 	pauseTime              = 300 * time.Millisecond
-	lockConfilctCount      = 0
 )
 
 func NewTxn(c hbase.HBaseClient, oracle oracle.Oracle) (Txn, error) {
@@ -74,7 +73,7 @@ func NewTxnWithConf(c hbase.HBaseClient, conf TxnConfig, oracle oracle.Oracle) (
 		oracle:           oracle,
 		primaryRowOffset: -1,
 		conf:             conf,
-		rpc:              newThemisRPC(c, conf),
+		rpc:              newThemisRPC(c, oracle, conf),
 	}
 	txn.startTs, err = txn.oracle.GetTimestamp()
 	if err != nil {

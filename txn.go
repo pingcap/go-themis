@@ -17,6 +17,8 @@ type Txn interface {
 	LockRow(t string, row []byte) error
 	Put(t string, put *hbase.Put)
 	Delete(t string, del *hbase.Delete) error
+	GetScanner(tbl []byte, startKey, endKey []byte, batchSize int) *ThemisScanner
+	Release()
 	Commit() error
 	GetStartTS() uint64
 	GetCommitTS() uint64
