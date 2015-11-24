@@ -10,6 +10,7 @@ var (
 	ErrLockNotExpired  = errors.New("lock not expired")
 	ErrCleanLockFailed = errors.New("clean lock failed")
 	ErrWrongRegion     = errors.New("wrong region, please retry")
+	ErrTooManyRows     = errors.New("too many rows in one transaction")
 )
 
 type Txn interface {

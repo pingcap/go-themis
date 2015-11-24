@@ -2,6 +2,7 @@ package themis
 
 import (
 	"fmt"
+	"strconv"
 	"testing"
 	"time"
 
@@ -366,4 +367,14 @@ func (s *TransactionTestSuit) TestPhantomRead(c *C) {
 	rs, err := tx.Get(themisTestTableName, hbase.NewGet(getTestRowKey(c)).AddColumn(cf, q))
 	c.Assert(err, NotNil)
 	c.Assert(rs, IsNil)
+}
+
+func (s *TransactionTestSuit) TestExceedMaxRows(c *C) {
+	conf := defaultTxnConf
+	tx := newTxn(s.cli, conf)
+	for i := 0; i < conf.MaxRowsInOneTxn+1; i++ {
+		tx.Put(themisTestTableName, hbase.NewPut([]byte(strconv.Itoa(i))).AddValue(cf, q, []byte("test")))
+	}
+	err := tx.Commit()
+	c.Assert(err, NotNil)
 }
