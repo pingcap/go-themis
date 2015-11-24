@@ -405,7 +405,6 @@ func (txn *themisTxn) tryToCleanLock(lock Lock) error {
 				// commit secondary row
 				err := txn.commitSecondaryAndCleanLock(lock.(*themisSecondaryLock), commitTs)
 				if err != nil {
-					log.Error(err)
 					return errors.Trace(err)
 				}
 				return nil
