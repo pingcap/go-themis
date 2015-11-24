@@ -57,7 +57,7 @@ var _ Txn = (*themisTxn)(nil)
 var (
 	// ErrSimulated is used when maybe rollback occurs error too.
 	ErrSimulated           = errors.New("simulated error")
-	cleanLockMaxRetryCount = 30
+	maxCleanLockRetryCount = 30
 	pauseTime              = 300 * time.Millisecond
 )
 
@@ -350,25 +350,22 @@ func (txn *themisTxn) commitSecondaryAndCleanLock(lock *themisSecondaryLock, com
 }
 
 func (txn *themisTxn) cleanLockWithRetry(lock Lock) error {
-	for i := 0; i < cleanLockMaxRetryCount; i++ {
-		if exists, err := txn.lockCleaner.IsLockExists(lock.Coordinate(), 0, lock.Timestamp()); err == nil && exists {
-			err := txn.tryToCleanLock(lock)
-			if err != nil && terror.ErrorEqual(err, ErrLockNotExpired) {
-				log.Warn("sleep a while, and retry clean lock")
-				// TODO(dongxu) use cleverer retry sleep time interval
-				time.Sleep(pauseTime)
-				continue
-			} else if err != nil {
-				return errors.Trace(err)
-			}
-			// lock cleaned successfully
-			return nil
+	for i := 0; i < maxCleanLockRetryCount; i++ {
+		if exists, err := txn.lockCleaner.IsLockExists(lock.Coordinate(), 0, lock.Timestamp()); err != nil || !exists {
+			return errors.Trace(err)
+		}
+		// try clean lock
+		err := txn.tryToCleanLock(lock)
+		if terror.ErrorEqual(err, ErrLockNotExpired) {
+			log.Warn("sleep a while, and retry clean lock")
+			// TODO(dongxu) use cleverer retry sleep time interval
+			time.Sleep(pauseTime)
+			continue
 		} else if err != nil {
 			return errors.Trace(err)
-		} else {
-			// lock cleaned by other client
-			return nil
 		}
+		// lock cleaned successfully
+		return nil
 	}
 	return ErrCleanLockFailed
 }
