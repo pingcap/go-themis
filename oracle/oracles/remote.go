@@ -27,6 +27,7 @@ func NewRemoteOracle(addr string) oracle.Oracle {
 }
 
 func (t *remoteOracle) IsExpired(beginMs uint64, TTL uint64) bool {
+	// TODO records the local wall time when getting beginMs from TSO
 	return uint64(time.Now().UnixNano()/int64(time.Millisecond)) >= (beginMs + TTL)
 }
 
