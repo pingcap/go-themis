@@ -17,6 +17,7 @@ type TxnConfig struct {
 	ConcurrentPrewriteAndCommit bool
 	WaitSecondaryCommit         bool
 	TTLInMs                     uint64
+	MaxRowsInOneTxn             int
 	// options below is for debugging and testing
 	brokenPrewriteSecondaryTest            bool
 	brokenPrewriteSecondaryAndRollbackTest bool
@@ -27,6 +28,7 @@ type TxnConfig struct {
 var defaultTxnConf = TxnConfig{
 	ConcurrentPrewriteAndCommit:            true,
 	WaitSecondaryCommit:                    false,
+	MaxRowsInOneTxn:                        50000,
 	TTLInMs:                                5 * 1000, // default txn TTL: 5s
 	brokenPrewriteSecondaryTest:            false,
 	brokenPrewriteSecondaryAndRollbackTest: false,
@@ -148,8 +150,11 @@ func (txn *themisTxn) Delete(tbl string, p *hbase.Delete) error {
 }
 
 func (txn *themisTxn) Commit() error {
-	if txn.mutationCache.getSize() == 0 {
+	if txn.mutationCache.getMutationCount() == 0 {
 		return nil
+	}
+	if txn.mutationCache.getRowCount() > txn.conf.MaxRowsInOneTxn {
+		return ErrTooManyRows
 	}
 
 	txn.selectPrimaryAndSecondaries()

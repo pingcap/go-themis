@@ -207,7 +207,15 @@ func (c *columnMutationCache) getMutation(cc *hbase.ColumnCoordinate) *mutationV
 	return p
 }
 
-func (c *columnMutationCache) getSize() int {
+func (c *columnMutationCache) getRowCount() int {
+	ret := 0
+	for _, v := range c.mutations {
+		ret += len(v)
+	}
+	return ret
+}
+
+func (c *columnMutationCache) getMutationCount() int {
 	ret := 0
 	for _, v := range c.mutations {
 		for _, vv := range v {
