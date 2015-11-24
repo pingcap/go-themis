@@ -1,6 +1,8 @@
 package oracles
 
 import (
+	"time"
+
 	"github.com/juju/errors"
 	"github.com/ngaut/tso/client"
 	"github.com/pingcap/go-themis/oracle"
@@ -22,6 +24,12 @@ func NewRemoteOracle(addr string) oracle.Oracle {
 	return &remoteOracle{
 		c: client.NewClient(&client.Conf{ServerAddr: addr}),
 	}
+}
+
+func (t *remoteOracle) IsExpired(lockTs uint64, TTL uint64) bool {
+	beginMs := lockTs >> epochShiftBits
+	// TODO records the local wall time when getting beginMs from TSO
+	return uint64(time.Now().UnixNano()/int64(time.Millisecond)) >= (beginMs + TTL)
 }
 
 // GetTimestamp gets timestamp from remote data source.

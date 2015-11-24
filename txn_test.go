@@ -3,12 +3,14 @@ package themis
 import (
 	"fmt"
 	"strings"
+	"testing"
 	"time"
+
+	"github.com/juju/errors"
 
 	"github.com/ngaut/log"
 	. "github.com/pingcap/check"
 	"github.com/pingcap/go-hbase"
-	"github.com/pingcap/go-themis/oracle/oracles"
 )
 
 type TransactionTestSuit struct {
@@ -17,48 +19,46 @@ type TransactionTestSuit struct {
 
 var _ = Suite(&TransactionTestSuit{})
 
+func Test(t *testing.T) { TestingT(t) }
+
 func (s *TransactionTestSuit) SetUpSuite(c *C) {
-	s.cli, _ = createHBaseClient()
-	err := createNewTableAndDropOldTable(s.cli, themisTestTableName, cfName, nil)
+	var err error
+	s.cli, err = createHBaseClient()
 	c.Assert(err, Equals, nil)
 }
 
-func (s *TransactionTestSuit) TestAsyncCommit(c *C) {
-	p := hbase.NewPut([]byte("test"))
-	p.AddValue([]byte(cfName), []byte("q"), []byte("val"))
-	tx, err := NewTxn(s.cli, oracles.NewLocalOracle())
+func (s *TransactionTestSuit) SetUpTest(c *C) {
+	log.Warn("new test, reset tables")
+	err := createNewTableAndDropOldTable(s.cli, themisTestTableName, string(cf), nil)
 	c.Assert(err, IsNil)
+}
+
+func (s *TransactionTestSuit) TestAsyncCommit(c *C) {
+	p := hbase.NewPut(testRow).AddValue(cf, q, []byte("val"))
+	tx := newTxn(s.cli, defaultTxnConf)
 	tx.Put(themisTestTableName, p)
 	tx.Commit()
 
-	tx, err = NewTxn(s.cli, oracles.NewLocalOracle())
-	c.Assert(err, IsNil)
-	d := hbase.NewDelete([]byte("test"))
-	d.AddColumn([]byte(cfName), []byte("q"))
+	tx = newTxn(s.cli, defaultTxnConf)
+	d := hbase.NewDelete([]byte("test")).AddColumn(cf, q)
 	tx.Delete(themisTestTableName, d)
 	tx.Commit()
 
-	tx, err = NewTxn(s.cli, oracles.NewLocalOracle())
-	c.Assert(err, IsNil)
-	g := hbase.NewGet([]byte("test"))
-	g.AddFamily([]byte(cfName))
+	tx = newTxn(s.cli, defaultTxnConf)
+	g := hbase.NewGet([]byte("test")).AddFamily(cf)
 	r, err := tx.Get(themisTestTableName, g)
 	c.Assert(err, Equals, nil)
-	c.Assert(r == nil, Equals, true)
+	c.Assert(r, IsNil)
 	tx.Commit()
 
-	conf := TxnConfig{
-		ConcurrentPrewriteAndCommit: true,
-		brokenCommitSecondaryTest:   true,
-	}
+	conf := defaultTxnConf
+	conf.brokenCommitSecondaryTest = true
 
-	tx, err = NewTxn(s.cli, oracles.NewLocalOracle())
-	c.Assert(err, IsNil)
-	tx.AddConfig(conf)
+	tx = newTxn(s.cli, conf)
 	// simulating broken commit
 	for i := 0; i < 10; i++ {
 		p := hbase.NewPut([]byte(fmt.Sprintf("test_%d", i)))
-		p.AddValue([]byte(cfName), []byte("q"), []byte(fmt.Sprintf("%d", tx.startTs)))
+		p.AddValue(cf, q, []byte(fmt.Sprintf("%d", tx.(*themisTxn).GetStartTS())))
 		tx.Put(themisTestTableName, p)
 	}
 	err = tx.Commit()
@@ -66,7 +66,7 @@ func (s *TransactionTestSuit) TestAsyncCommit(c *C) {
 
 	//  wait until lock expired.
 	log.Warn("Wait for lock expired. Sleep...")
-	tick := 30
+	tick := 6
 	for tick > 0 {
 		time.Sleep(1 * time.Second)
 		tick--
@@ -75,11 +75,10 @@ func (s *TransactionTestSuit) TestAsyncCommit(c *C) {
 
 	log.Warn("Try commit again")
 	// new transction will not see lock
-	tx, err = NewTxn(s.cli, oracles.NewLocalOracle())
-	c.Assert(err, IsNil)
+	tx = newTxn(s.cli, defaultTxnConf)
 	for i := 0; i < 5; i++ {
 		p := hbase.NewPut([]byte(fmt.Sprintf("test_%d", i)))
-		p.AddValue([]byte(cfName), []byte("q"), []byte(fmt.Sprintf("%d", tx.startTs)))
+		p.AddValue(cf, q, []byte(fmt.Sprintf("%d", tx.(*themisTxn).GetStartTS())))
 		tx.Put(themisTestTableName, p)
 	}
 	err = tx.Commit()
@@ -88,54 +87,49 @@ func (s *TransactionTestSuit) TestAsyncCommit(c *C) {
 	}
 	c.Assert(err, Equals, nil)
 
-	tx, err = NewTxn(s.cli, oracles.NewLocalOracle())
-	c.Assert(err, IsNil)
+	tx = newTxn(s.cli, defaultTxnConf)
 	for i := 5; i < 10; i++ {
 		p := hbase.NewPut([]byte(fmt.Sprintf("test_%d", i)))
-		p.AddValue([]byte(cfName), []byte("q"), []byte(fmt.Sprintf("%d", tx.startTs)))
+		p.AddValue(cf, q, []byte(fmt.Sprintf("%d", tx.(*themisTxn).GetStartTS())))
 		tx.Put(themisTestTableName, p)
 	}
 	err = tx.Commit()
 	if err != nil {
-		log.Error(err)
+		log.Error(errors.ErrorStack(err))
 	}
 	c.Assert(err, Equals, nil)
 
 }
 
 func (s *TransactionTestSuit) TestBrokenPrewriteSecondary(c *C) {
-	tx, err := NewTxn(s.cli, oracles.NewLocalOracle())
-	c.Assert(err, IsNil)
-	ts := tx.startTs
+	tx := newTxn(s.cli, defaultTxnConf)
+	ts := tx.(*themisTxn).GetStartTS()
 	// simulating broken commit
 	for i := 0; i < 10; i++ {
 		p := hbase.NewPut([]byte(fmt.Sprintf("test_%d", i)))
-		p.AddValue([]byte(cfName), []byte("q"), []byte(fmt.Sprintf("%d", ts)))
+		p.AddValue(cf, q, []byte(fmt.Sprintf("%d", ts)))
 		tx.Put(themisTestTableName, p)
 	}
-	err = tx.Commit()
-	c.Assert(err, Equals, nil)
+	err := tx.Commit()
+	c.Assert(err, IsNil)
 
 	// TODO: check rallback & cleanup locks
-	conf := TxnConfig{
-		brokenPrewriteSecondaryTest: true,
-	}
-	tx, err = NewTxn(s.cli, oracles.NewLocalOracle())
-	c.Assert(err, IsNil)
-	tx.AddConfig(conf)
-	ts = tx.startTs
+	conf := defaultTxnConf
+	conf.brokenPrewriteSecondaryTest = true
+
+	tx = newTxn(s.cli, conf)
+	ts = tx.GetStartTS()
 	// simulating broken commit
 	for i := 0; i < 10; i++ {
 		p := hbase.NewPut([]byte(fmt.Sprintf("test_%d", i)))
-		p.AddValue([]byte(cfName), []byte("q"), []byte(fmt.Sprintf("%d", ts)))
+		p.AddValue(cf, q, []byte(fmt.Sprintf("%d", ts)))
 		tx.Put(themisTestTableName, p)
 	}
 	err = tx.Commit()
 	c.Assert(err, NotNil)
 
 	// check if locks are cleaned successfully
-	tx, err = NewTxn(s.cli, oracles.NewLocalOracle())
-	c.Assert(err, IsNil)
+	tx = newTxn(s.cli, defaultTxnConf)
 	for i := 0; i < 10; i++ {
 		g := hbase.NewGet([]byte(fmt.Sprintf("test_%d", i)))
 		r, err := tx.Get(themisTestTableName, g)
@@ -147,27 +141,24 @@ func (s *TransactionTestSuit) TestBrokenPrewriteSecondary(c *C) {
 func (s *TransactionTestSuit) TestPrimaryLockTimeout(c *C) {
 	// TODO: check if lock can be cleaned up when secondary prewrite failed and
 	// rollback is also failed
-	conf := TxnConfig{
-		brokenPrewriteSecondaryTest:            true,
-		brokenPrewriteSecondaryAndRollbackTest: true,
-	}
-	tx, err := NewTxn(s.cli, oracles.NewLocalOracle())
-	c.Assert(err, IsNil)
-	tx.AddConfig(conf)
-	ts := tx.startTs
+	conf := defaultTxnConf
+	conf.brokenPrewriteSecondaryTest = true
+	conf.brokenPrewriteSecondaryAndRollbackTest = true
+	tx := newTxn(s.cli, conf)
+	ts := tx.GetStartTS()
 	// simulating broken commit
 	for i := 0; i < 2; i++ {
 		p := hbase.NewPut([]byte(fmt.Sprintf("test_%d", i)))
-		p.AddValue([]byte(cfName), []byte("q"), []byte(fmt.Sprintf("%d", ts)))
+		p.AddValue(cf, q, []byte(fmt.Sprintf("%d", ts)))
 		tx.Put(themisTestTableName, p)
 	}
-	err = tx.Commit()
+	err := tx.Commit()
 	c.Assert(err, NotNil)
 	log.Error(err)
 
 	//  wait until lock expired.
 	log.Warn("Wait for lock expired. Sleep...")
-	tick := 30
+	tick := 6
 	for tick > 0 {
 		time.Sleep(1 * time.Second)
 		tick--
@@ -175,8 +166,7 @@ func (s *TransactionTestSuit) TestPrimaryLockTimeout(c *C) {
 	}
 
 	// check if locks are cleaned successfully
-	tx, err = NewTxn(s.cli, oracles.NewLocalOracle())
-	c.Assert(err, IsNil)
+	tx = newTxn(s.cli, defaultTxnConf)
 	for i := 0; i < 2; i++ {
 		g := hbase.NewGet([]byte(fmt.Sprintf("test_%d", i)))
 		r, err := tx.Get(themisTestTableName, g)
@@ -188,12 +178,11 @@ func (s *TransactionTestSuit) TestPrimaryLockTimeout(c *C) {
 }
 
 func checkCommitSuccess(s *TransactionTestSuit, c *C, row []byte) {
-	tx, err := NewTxn(s.cli, oracles.NewLocalOracle())
-	c.Assert(err, IsNil)
+	tx := newTxn(s.cli, defaultTxnConf)
 	colMap := make(map[string]string)
-	colMap["#p:"+cfName+"#q"] = ""
-	colMap[cfName+":q"] = ""
-	r, err := tx.client.Get(themisTestTableName, hbase.NewGet(row))
+	colMap["#p:"+string(cf)+"#q"] = ""
+	colMap[string(cf)+":q"] = ""
+	r, err := tx.(*themisTxn).client.Get(themisTestTableName, hbase.NewGet(row))
 	c.Assert(err, Equals, nil)
 	c.Assert(2, Equals, len(r.Columns))
 	for _, v := range r.Columns {
@@ -203,39 +192,36 @@ func checkCommitSuccess(s *TransactionTestSuit, c *C, row []byte) {
 }
 
 func (s *TransactionTestSuit) TestLockRow(c *C) {
-	tx, err := NewTxn(s.cli, oracles.NewLocalOracle())
-	c.Assert(err, IsNil)
-
+	tx := newTxn(s.cli, defaultTxnConf)
 	row := []byte("lockRow")
 	put := hbase.NewPut(row)
-	put.AddValue([]byte(cfName), []byte("q"), []byte("v"))
+	put.AddValue(cf, q, []byte("v"))
 	tx.Put(themisTestTableName, put)
 	tx.Commit()
 
 	checkCommitSuccess(s, c, row)
 
-	tx, err = NewTxn(s.cli, oracles.NewLocalOracle())
-	c.Assert(err, IsNil)
-	err = tx.LockRow(themisTestTableName, row)
+	tx = newTxn(s.cli, defaultTxnConf)
+	err := tx.LockRow(themisTestTableName, row)
 	c.Assert(err, Equals, nil)
 
-	tx.selectPrimaryAndSecondaries()
-	err = tx.prewritePrimary()
+	tx.(*themisTxn).selectPrimaryAndSecondaries()
+	err = tx.(*themisTxn).prewritePrimary()
 	c.Assert(err, Equals, nil)
 	colMap := make(map[string]string)
-	colMap["#p:"+cfName+"#q"] = ""
-	colMap[cfName+":q"] = ""
-	colMap["L:"+cfName+"#q"] = ""
+	colMap["#p:"+string(cf)+"#q"] = ""
+	colMap[string(cf)+":q"] = ""
+	colMap["L:"+string(cf)+"#q"] = ""
 	var r *hbase.ResultRow
-	r, err = tx.client.Get(themisTestTableName, hbase.NewGet(row))
+	r, err = tx.(*themisTxn).client.Get(themisTestTableName, hbase.NewGet(row))
 	c.Assert(err, Equals, nil)
 	c.Assert(3, Equals, len(r.Columns))
 	for _, v := range r.Columns {
 		_, exist := colMap[string(v.Family)+":"+string(v.Qual)]
 		c.Assert(exist, Equals, true)
 	}
-	tx.commitTs = tx.startTs + 1
-	tx.commitPrimary()
+	tx.(*themisTxn).commitTs = tx.GetStartTS() + 1
+	tx.(*themisTxn).commitPrimary()
 	checkCommitSuccess(s, c, row)
 }
 
@@ -245,17 +231,15 @@ func isWrongRegionErr(err error) bool {
 
 func (s *TransactionTestSuit) TestBatchGet(c *C) {
 	batchGetTestTbl := "batch_get_test"
-	err := createNewTableAndDropOldTable(s.cli, batchGetTestTbl, cfName, [][]byte{
+	err := createNewTableAndDropOldTable(s.cli, batchGetTestTbl, string(cf), [][]byte{
 		// split in middle
 		[]byte("batch_test_5"),
 	})
 	defer dropTable(s.cli, batchGetTestTbl)
 	// prepare data
-	tx, err := NewTxn(s.cli, oracles.NewLocalOracle())
-	c.Assert(err, IsNil)
+	tx := newTxn(s.cli, defaultTxnConf)
 	for i := 0; i < 10; i++ {
-		p := hbase.NewPut([]byte(fmt.Sprintf("batch_test_%d", i)))
-		p.AddValue([]byte(cfName), []byte("q"), []byte("v"))
+		p := hbase.NewPut([]byte(fmt.Sprintf("batch_test_%d", i))).AddValue(cf, q, []byte("v"))
 		tx.Put(batchGetTestTbl, p)
 	}
 	err = tx.Commit()
@@ -264,88 +248,123 @@ func (s *TransactionTestSuit) TestBatchGet(c *C) {
 	// batch get
 	var gets []*hbase.Get
 	for i := 0; i < 10; i++ {
-		g := hbase.NewGet([]byte(fmt.Sprintf("batch_test_%d", i)))
-		g.AddColumn([]byte(cfName), []byte("q"))
+		g := hbase.NewGet([]byte(fmt.Sprintf("batch_test_%d", i))).AddColumn(cf, q)
 		gets = append(gets, g)
 	}
 	for i := 5; i < 10; i++ {
-		g := hbase.NewGet([]byte(fmt.Sprintf("batch_test_no_such_row_%d", i)))
-		g.AddColumn([]byte(cfName), []byte("q"))
+		g := hbase.NewGet([]byte(fmt.Sprintf("batch_test_no_such_row_%d", i))).AddColumn(cf, q)
 		gets = append(gets, g)
 	}
-	tx, err = NewTxn(s.cli, oracles.NewLocalOracle())
-	c.Assert(err, IsNil)
-	_, err = tx.BatchGet(batchGetTestTbl, gets)
+	tx = newTxn(s.cli, defaultTxnConf)
+	_, err = tx.Gets(batchGetTestTbl, gets)
 	c.Assert(isWrongRegionErr(err), Equals, true)
 
 	gets = nil
 	for i := 0; i < 5; i++ {
-		g := hbase.NewGet([]byte(fmt.Sprintf("batch_test_%d", i)))
-		g.AddColumn([]byte(cfName), []byte("q"))
+		g := hbase.NewGet([]byte(fmt.Sprintf("batch_test_%d", i))).AddColumn(cf, q)
 		gets = append(gets, g)
 	}
-	tx, err = NewTxn(s.cli, oracles.NewLocalOracle())
-	c.Assert(err, IsNil)
-	rs, err := tx.BatchGet(batchGetTestTbl, gets)
+	tx = newTxn(s.cli, defaultTxnConf)
+	rs, err := tx.Gets(batchGetTestTbl, gets)
 	c.Assert(err, IsNil)
 	c.Assert(len(rs), Equals, 5)
 }
 
 func (s *TransactionTestSuit) TestBatchGetWithLocks(c *C) {
 	// simulating locks
-	conf := TxnConfig{
-		brokenCommitSecondaryTest: true,
-	}
-	tx, err := NewTxn(s.cli, oracles.NewLocalOracle())
-	c.Assert(err, IsNil)
-	tx.AddConfig(conf)
-	ts := tx.startTs
+	conf := defaultTxnConf
+	conf.brokenCommitSecondaryTest = true
+
+	tx := newTxn(s.cli, conf)
+	ts := tx.GetStartTS()
 	// simulating broken commit
 	for i := 0; i < 10; i++ {
 		p := hbase.NewPut([]byte(fmt.Sprintf("batch_test_with_lock_%d", i)))
-		p.AddValue([]byte(cfName), []byte("q"), []byte(fmt.Sprintf("%d", ts)))
+		p.AddValue(cf, q, []byte(fmt.Sprintf("%d", ts)))
 		tx.Put(themisTestTableName, p)
 	}
 	tx.Commit()
 
-	tx, err = NewTxn(s.cli, oracles.NewLocalOracle())
-	c.Assert(err, IsNil)
+	tx = newTxn(s.cli, defaultTxnConf)
 
 	var gets []*hbase.Get
 	for i := 0; i < 10; i++ {
-		g := hbase.NewGet([]byte(fmt.Sprintf("batch_test_with_lock_%d", i)))
-		g.AddColumn([]byte(cfName), []byte("q"))
+		g := hbase.NewGet([]byte(fmt.Sprintf("batch_test_with_lock_%d", i))).AddColumn(cf, q)
 		gets = append(gets, g)
 	}
-	rs, err := tx.BatchGet(themisTestTableName, gets)
+	rs, err := tx.Gets(themisTestTableName, gets)
 	c.Assert(err, IsNil)
 	// we had already cleaned secondary locks
 	c.Assert(len(rs), Equals, 10)
 }
 
 func (s *TransactionTestSuit) TestAsyncSecondaryCommit(c *C) {
-	conf := TxnConfig{
-		WaitSecondaryCommit:         false,
-		ConcurrentPrewriteAndCommit: true,
-		brokenCommitSecondaryTest:   true,
-	}
-	tx, err := NewTxn(s.cli, oracles.NewLocalOracle())
-	c.Assert(err, IsNil)
-	tx.AddConfig(conf)
+	conf := defaultTxnConf
+	conf.brokenCommitSecondaryTest = true
+	tx := newTxn(s.cli, conf)
 	for i := 0; i < 10; i++ {
-		p := hbase.NewPut([]byte(fmt.Sprintf("async_commit_test_%d", i)))
-		p.AddValue([]byte(cfName), []byte("q"), []byte(fmt.Sprintf("%d", tx.startTs)))
+		p := hbase.NewPut([]byte(fmt.Sprintf("async_commit_test_%d", i))).AddValue(cf, q, []byte(fmt.Sprintf("%d", tx.GetStartTS())))
 		tx.Put(themisTestTableName, p)
 	}
 	tx.Commit()
 
-	tx, err = NewTxn(s.cli, oracles.NewLocalOracle())
-	c.Assert(err, IsNil)
-	tx.AddConfig(conf)
+	tx = newTxn(s.cli, conf)
 	for i := 0; i < 10; i++ {
 		g := hbase.NewGet([]byte(fmt.Sprintf("async_commit_test_%d", i)))
 		rs, err := tx.Get(themisTestTableName, g)
 		c.Assert(err, IsNil)
-		log.Info(rs)
+		c.Assert(len(rs.SortedColumns), Greater, 0)
 	}
+}
+
+func (s *TransactionTestSuit) TestTTL(c *C) {
+	conf := defaultTxnConf
+	conf.brokenCommitPrimaryTest = true
+	tx := newTxn(s.cli, conf)
+	p := hbase.NewPut(testRow).AddValue(cf, q, []byte("val"))
+	tx.Put(themisTestTableName, p)
+	tx.Commit()
+
+	startTs := time.Now()
+	conf = defaultTxnConf
+	conf.TTLInMs = 1000
+	tx = newTxn(s.cli, conf)
+	rs, err := tx.Get(themisTestTableName, hbase.NewGet(testRow).AddColumn(cf, q))
+	c.Assert(time.Since(startTs).Seconds(), Greater, float64(1))
+	c.Assert(time.Since(startTs).Seconds(), Less, float64(1.5))
+	// transction timeout, alreay rolled back.
+	c.Assert(rs, IsNil)
+	c.Assert(err, IsNil)
+	tx.Commit()
+}
+
+type mockOracle struct {
+	tick uint64
+}
+
+func (o *mockOracle) GetTimestamp() (uint64, error) {
+	return o.tick, nil
+}
+
+func (o *mockOracle) IsExpired(beginMs uint64, TTL uint64) bool {
+	return false
+}
+
+func (s *TransactionTestSuit) TestPhantomRead(c *C) {
+	o := &mockOracle{}
+
+	conf := defaultTxnConf
+	conf.brokenCommitPrimaryTest = true
+	o.tick = 1
+	tx, _ := NewTxnWithConf(s.cli, conf, o)
+	p := hbase.NewPut(testRow).AddValue(cf, q, []byte("val"))
+	o.tick = 3
+	tx.Put(themisTestTableName, p)
+	tx.Commit()
+
+	o.tick = 2
+	tx, _ = NewTxn(s.cli, o)
+	rs, err := tx.Get(themisTestTableName, hbase.NewGet(testRow).AddColumn(cf, q))
+	c.Assert(err, NotNil)
+	c.Assert(rs, IsNil)
 }

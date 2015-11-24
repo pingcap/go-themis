@@ -10,34 +10,25 @@ import (
 	"github.com/ngaut/log"
 	"github.com/pingcap/go-hbase"
 	"github.com/pingcap/go-hbase/proto"
+	"github.com/pingcap/go-themis/oracle"
 	"github.com/pingcap/tidb/kv"
 )
 
-type themisClient interface {
-	checkAndSetLockIsExpired(l ThemisLock) (bool, error)
-	themisGet(tbl []byte, g *hbase.Get, startTs uint64, ignoreLock bool) (*hbase.ResultRow, error)
-	themisBatchGet(tbl []byte, gets []*hbase.Get, startTs uint64, ignoreLock bool) ([]*hbase.ResultRow, error)
-	prewriteRow(tbl []byte, row []byte, mutations []*columnMutation, prewriteTs uint64, primaryLockBytes []byte, secondaryLockBytes []byte, primaryOffset int) (ThemisLock, error)
-	isLockExpired(tbl, row []byte, ts uint64) (bool, error)
-	getLockAndErase(cc *hbase.ColumnCoordinate, prewriteTs uint64) (ThemisLock, error)
-	commitRow(tbl, row []byte, mutations []*columnMutation, prewriteTs, commitTs uint64, primaryOffset int) error
-	commitSecondaryRow(tbl, row []byte, mutations []*columnMutation, prewriteTs, commitTs uint64) error
-	prewriteSecondaryRow(tbl, row []byte, mutations []*columnMutation, prewriteTs uint64, secondaryLockBytes []byte) (ThemisLock, error)
-	batchPrewriteSecondaryRows(tbl []byte, rowM map[string]*rowMutation, prewriteTs uint64, secondaryLockBytes []byte) (map[string]ThemisLock, error)
-	batchCommitSecondaryRows(tbl []byte, rowM map[string]*rowMutation, prewriteTs, commitTs uint64) error
-}
-
-func newThemisClient(client hbase.HBaseClient) themisClient {
-	return &themisClientImpl{
+func newThemisRPC(client hbase.HBaseClient, oracle oracle.Oracle, conf TxnConfig) *themisRPC {
+	return &themisRPC{
 		client: client,
+		conf:   conf,
+		oracle: oracle,
 	}
 }
 
-type themisClientImpl struct {
+type themisRPC struct {
 	client hbase.HBaseClient
+	conf   TxnConfig
+	oracle oracle.Oracle
 }
 
-func (t *themisClientImpl) call(methodName string, tbl, row []byte, req pb.Message, resp pb.Message) error {
+func (rpc *themisRPC) call(methodName string, tbl, row []byte, req pb.Message, resp pb.Message) error {
 	param, _ := pb.Marshal(req)
 
 	call := &hbase.CoprocessorServiceCall{
@@ -46,7 +37,7 @@ func (t *themisClientImpl) call(methodName string, tbl, row []byte, req pb.Messa
 		MethodName:   methodName,
 		RequestParam: param,
 	}
-	r, err := t.client.ServiceCall(string(tbl), call)
+	r, err := rpc.client.ServiceCall(string(tbl), call)
 	if err != nil {
 		return errors.Trace(err)
 	}
@@ -57,30 +48,27 @@ func (t *themisClientImpl) call(methodName string, tbl, row []byte, req pb.Messa
 	return nil
 }
 
-func (t *themisClientImpl) checkAndSetLockIsExpired(lock ThemisLock) (bool, error) {
-	b, err := t.isLockExpired(lock.getColumn().Table, lock.getColumn().Row, lock.getTimestamp())
-	if err != nil {
-		return false, errors.Trace(err)
-	}
-	lock.setExpired(b)
-	return b, nil
+func (rpc *themisRPC) checkAndSetLockIsExpired(lock Lock) (bool, error) {
+	expired := rpc.oracle.IsExpired(lock.Timestamp(), rpc.conf.TTLInMs)
+	lock.SetExpired(expired)
+	return expired, nil
 }
 
-func (t *themisClientImpl) themisGet(tbl []byte, g *hbase.Get, startTs uint64, ignoreLock bool) (*hbase.ResultRow, error) {
+func (rpc *themisRPC) themisGet(tbl []byte, g *hbase.Get, startTs uint64, ignoreLock bool) (*hbase.ResultRow, error) {
 	req := &ThemisGetRequest{
 		Get:        g.ToProto().(*proto.Get),
 		StartTs:    pb.Uint64(startTs),
 		IgnoreLock: pb.Bool(ignoreLock),
 	}
 	var resp proto.Result
-	err := t.call("themisGet", tbl, g.Row, req, &resp)
+	err := rpc.call("themisGet", tbl, g.Row, req, &resp)
 	if err != nil {
 		return nil, errors.Trace(err)
 	}
 	return hbase.NewResultRow(&resp), nil
 }
 
-func (t *themisClientImpl) themisBatchGet(tbl []byte, gets []*hbase.Get, startTs uint64, ignoreLock bool) ([]*hbase.ResultRow, error) {
+func (rpc *themisRPC) themisBatchGet(tbl []byte, gets []*hbase.Get, startTs uint64, ignoreLock bool) ([]*hbase.ResultRow, error) {
 	var protoGets []*proto.Get
 	for _, g := range gets {
 		protoGets = append(protoGets, g.ToProto().(*proto.Get))
@@ -91,7 +79,7 @@ func (t *themisClientImpl) themisBatchGet(tbl []byte, gets []*hbase.Get, startTs
 		IgnoreLock: pb.Bool(ignoreLock),
 	}
 	var resp ThemisBatchGetResponse
-	err := t.call("themisBatchGet", tbl, gets[0].Row, req, &resp)
+	err := rpc.call("themisBatchGet", tbl, gets[0].Row, req, &resp)
 	if err != nil {
 		return nil, errors.Trace(err)
 	}
@@ -102,7 +90,7 @@ func (t *themisClientImpl) themisBatchGet(tbl []byte, gets []*hbase.Get, startTs
 	return results, nil
 }
 
-func (t *themisClientImpl) prewriteRow(tbl []byte, row []byte, mutations []*columnMutation, prewriteTs uint64, primaryLockBytes []byte, secondaryLockBytes []byte, primaryOffset int) (ThemisLock, error) {
+func (rpc *themisRPC) prewriteRow(tbl []byte, row []byte, mutations []*columnMutation, prewriteTs uint64, primaryLockBytes []byte, secondaryLockBytes []byte, primaryOffset int) (Lock, error) {
 	var cells []*proto.Cell
 	request := &ThemisPrewriteRequest{
 		PrewriteTs:    pb.Uint64(prewriteTs),
@@ -125,7 +113,7 @@ func (t *themisClientImpl) prewriteRow(tbl []byte, row []byte, mutations []*colu
 	request.ThemisPrewrite.Mutations = cells
 
 	var res ThemisPrewriteResponse
-	err := t.call("prewriteRow", tbl, row, request, &res)
+	err := rpc.call("prewriteRow", tbl, row, request, &res)
 	if err != nil {
 		return nil, errors.Trace(err)
 	}
@@ -139,7 +127,7 @@ func (t *themisClientImpl) prewriteRow(tbl []byte, row []byte, mutations []*colu
 
 	commitTs := b.GetNewerWriteTs()
 	if commitTs != 0 {
-		log.Errorf("write conflict, encounter write with larger timestamp than prewriteTs=%d, commitTs=%d, row=%q", prewriteTs, commitTs, row)
+		log.Errorf("write conflict, encounter write with larger timestamp than prewriteTs=%d, commitTs=%d, row=%s", prewriteTs, commitTs, string(row))
 		return nil, kv.ErrLockConflict
 	}
 
@@ -156,11 +144,11 @@ func (t *themisClientImpl) prewriteRow(tbl []byte, row []byte, mutations []*colu
 			Qual:   b.Qualifier,
 		},
 	}
-	l.setColumn(col)
+	l.SetCoordinate(col)
 	return l, nil
 }
 
-func (t *themisClientImpl) isLockExpired(tbl, row []byte, ts uint64) (bool, error) {
+func (rpc *themisRPC) isLockExpired(tbl, row []byte, ts uint64) (bool, error) {
 	req := &LockExpiredRequest{
 		Timestamp: pb.Uint64(ts),
 	}
@@ -168,14 +156,14 @@ func (t *themisClientImpl) isLockExpired(tbl, row []byte, ts uint64) (bool, erro
 	if row == nil {
 		debug.PrintStack()
 	}
-	err := t.call("isLockExpired", tbl, row, req, &res)
+	err := rpc.call("isLockExpired", tbl, row, req, &res)
 	if err != nil {
 		return false, errors.Trace(err)
 	}
 	return res.GetExpired(), nil
 }
 
-func (t *themisClientImpl) getLockAndErase(cc *hbase.ColumnCoordinate, prewriteTs uint64) (ThemisLock, error) {
+func (rpc *themisRPC) getLockAndErase(cc *hbase.ColumnCoordinate, prewriteTs uint64) (Lock, error) {
 	req := &EraseLockRequest{
 		Row:        cc.Row,
 		Family:     cc.Column.Family,
@@ -183,7 +171,7 @@ func (t *themisClientImpl) getLockAndErase(cc *hbase.ColumnCoordinate, prewriteT
 		PrewriteTs: pb.Uint64(prewriteTs),
 	}
 	var res EraseLockResponse
-	err := t.call("getLockAndErase", cc.Table, cc.Row, req, &res)
+	err := rpc.call("getLockAndErase", cc.Table, cc.Row, req, &res)
 	if err != nil {
 		return nil, errors.Trace(err)
 	}
@@ -194,7 +182,7 @@ func (t *themisClientImpl) getLockAndErase(cc *hbase.ColumnCoordinate, prewriteT
 	return parseLockFromBytes(b)
 }
 
-func (t *themisClientImpl) commitRow(tbl, row []byte, mutations []*columnMutation,
+func (rpc *themisRPC) commitRow(tbl, row []byte, mutations []*columnMutation,
 	prewriteTs, commitTs uint64, primaryOffset int) error {
 	req := &ThemisCommitRequest{}
 	req.ThemisCommit = &ThemisCommit{
@@ -208,7 +196,7 @@ func (t *themisClientImpl) commitRow(tbl, row []byte, mutations []*columnMutatio
 		req.ThemisCommit.Mutations = append(req.ThemisCommit.Mutations, m.toCell())
 	}
 	var res ThemisCommitResponse
-	err := t.call("commitRow", tbl, row, req, &res)
+	err := rpc.call("commitRow", tbl, row, req, &res)
 	if err != nil {
 		return errors.Trace(err)
 	}
@@ -219,7 +207,7 @@ func (t *themisClientImpl) commitRow(tbl, row []byte, mutations []*columnMutatio
 	return nil
 }
 
-func (t *themisClientImpl) batchCommitSecondaryRows(tbl []byte, rowMs map[string]*rowMutation, prewriteTs, commitTs uint64) error {
+func (rpc *themisRPC) batchCommitSecondaryRows(tbl []byte, rowMs map[string]*rowMutation, prewriteTs, commitTs uint64) error {
 	req := &ThemisBatchCommitSecondaryRequest{}
 
 	i := 0
@@ -243,7 +231,7 @@ func (t *themisClientImpl) batchCommitSecondaryRows(tbl []byte, rowMs map[string
 	}
 
 	var res ThemisBatchCommitSecondaryResponse
-	err := t.call("batchCommitSecondaryRows", tbl, lastRow, req, &res)
+	err := rpc.call("batchCommitSecondaryRows", tbl, lastRow, req, &res)
 	if err != nil {
 		return errors.Trace(err)
 	}
@@ -260,18 +248,18 @@ func (t *themisClientImpl) batchCommitSecondaryRows(tbl []byte, rowMs map[string
 	return nil
 }
 
-func (t *themisClientImpl) commitSecondaryRow(tbl, row []byte, mutations []*columnMutation,
+func (rpc *themisRPC) commitSecondaryRow(tbl, row []byte, mutations []*columnMutation,
 	prewriteTs, commitTs uint64) error {
-	return t.commitRow(tbl, row, mutations, prewriteTs, commitTs, -1)
+	return rpc.commitRow(tbl, row, mutations, prewriteTs, commitTs, -1)
 }
 
-func (t *themisClientImpl) prewriteSecondaryRow(tbl, row []byte,
+func (rpc *themisRPC) prewriteSecondaryRow(tbl, row []byte,
 	mutations []*columnMutation, prewriteTs uint64,
-	secondaryLockBytes []byte) (ThemisLock, error) {
-	return t.prewriteRow(tbl, row, mutations, prewriteTs, nil, secondaryLockBytes, -1)
+	secondaryLockBytes []byte) (Lock, error) {
+	return rpc.prewriteRow(tbl, row, mutations, prewriteTs, nil, secondaryLockBytes, -1)
 }
 
-func (t *themisClientImpl) batchPrewriteSecondaryRows(tbl []byte, rowMs map[string]*rowMutation, prewriteTs uint64, secondaryLockBytes []byte) (map[string]ThemisLock, error) {
+func (rpc *themisRPC) batchPrewriteSecondaryRows(tbl []byte, rowMs map[string]*rowMutation, prewriteTs uint64, secondaryLockBytes []byte) (map[string]Lock, error) {
 	request := &ThemisBatchPrewriteSecondaryRequest{
 		PrewriteTs:    pb.Uint64(prewriteTs),
 		SecondaryLock: secondaryLockBytes,
@@ -297,16 +285,16 @@ func (t *themisClientImpl) batchPrewriteSecondaryRows(tbl []byte, rowMs map[stri
 	}
 
 	var res ThemisBatchPrewriteSecondaryResponse
-	err := t.call("batchPrewriteSecondaryRows", tbl, lastRow, request, &res)
+	err := rpc.call("batchPrewriteSecondaryRows", tbl, lastRow, request, &res)
 	if err != nil {
 		return nil, errors.Trace(err)
 	}
 
 	//Perhaps, part row has not in a region, sample : when region split, then need try
-	lockMap := make(map[string]ThemisLock)
+	lockMap := make(map[string]Lock)
 	if res.RowsNotInRegion != nil && len(res.RowsNotInRegion) > 0 {
 		for _, r := range res.RowsNotInRegion {
-			tl, err := t.prewriteSecondaryRow(tbl, r, rowMs[string(r)].mutationList(true), prewriteTs, secondaryLockBytes)
+			tl, err := rpc.prewriteSecondaryRow(tbl, r, rowMs[string(r)].mutationList(true), prewriteTs, secondaryLockBytes)
 			if err != nil {
 				return nil, errors.Trace(err)
 			}
@@ -334,7 +322,7 @@ func (t *themisClientImpl) batchPrewriteSecondaryRows(tbl []byte, rowMs map[stri
 	return lockMap, nil
 }
 
-func judgePerwriteResultRow(pResult *ThemisPrewriteResult, tbl []byte, prewriteTs uint64, row []byte) (ThemisLock, error) {
+func judgePerwriteResultRow(pResult *ThemisPrewriteResult, tbl []byte, prewriteTs uint64, row []byte) (Lock, error) {
 	// Oops, someone else have already locked this row.
 	newerTs := pResult.GetNewerWriteTs()
 	if newerTs != 0 {
@@ -353,7 +341,7 @@ func judgePerwriteResultRow(pResult *ThemisPrewriteResult, tbl []byte, prewriteT
 			Qual:   pResult.Qualifier,
 		},
 	}
-	l.setColumn(col)
+	l.SetCoordinate(col)
 	return l, nil
 }
 

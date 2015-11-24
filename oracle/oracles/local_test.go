@@ -1,6 +1,9 @@
 package oracles
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 func TestLocalOracle(t *testing.T) {
 	l := NewLocalOracle()
@@ -15,5 +18,17 @@ func TestLocalOracle(t *testing.T) {
 
 	if len(m) != 100000 {
 		t.Error("generated same ts")
+	}
+}
+
+func TestExpired(t *testing.T) {
+	o := NewLocalOracle()
+	ts, _ := o.GetTimestamp()
+	time.Sleep(1 * time.Second)
+	if !o.IsExpired(uint64(ts), 500) {
+		t.Error("should expired")
+	}
+	if o.IsExpired(uint64(ts), 2000) {
+		t.Error("should not expired")
 	}
 }

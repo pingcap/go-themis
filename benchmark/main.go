@@ -16,7 +16,6 @@ import (
 	"github.com/ngaut/log"
 	"github.com/pingcap/go-hbase"
 	"github.com/pingcap/go-themis"
-	"github.com/pingcap/go-themis/oracle/oracles"
 )
 
 var c hbase.HBaseClient
@@ -73,17 +72,13 @@ func batchInsert(round int, rowCount int) {
 	for i := 0; i < round; i++ {
 		log.Errorf("begin batch insert")
 		ct := time.Now()
-		tx, err := themis.NewTxn(c, oracles.NewLocalOracle())
-		if err != nil {
-			log.Error(err)
-			continue
-		}
+		tx := themis.NewTxn(c)
 		for j := 0; j < rowCount; j++ {
 			put := hbase.NewPut([]byte(fmt.Sprintf("Row_%d_%d", j, i)))
 			put.AddValue([]byte("cf"), []byte("q"), bytes.Repeat([]byte{'A'}, 512))
 			tx.Put(tblName1, put)
 		}
-		err = tx.Commit()
+		err := tx.Commit()
 		if err != nil {
 			log.Error(err)
 		}
@@ -99,11 +94,7 @@ func insert(rowCount int) {
 		go func(i int) {
 			defer wg.Done()
 
-			tx, err := themis.NewTxn(c, oracles.NewLocalOracle())
-			if err != nil {
-				log.Error(err)
-				return
-			}
+			tx := themis.NewTxn(c)
 
 			put := hbase.NewPut([]byte(fmt.Sprintf("Row_%d", i)))
 			put.AddValue([]byte("cf"), []byte("q"), []byte(strconv.Itoa(i)))
@@ -114,7 +105,7 @@ func insert(rowCount int) {
 			tx.Put(tblName1, put)
 			tx.Put(tblName2, put2)
 
-			err = tx.Commit()
+			err := tx.Commit()
 			if err != nil {
 				log.Error(err)
 			}
@@ -134,11 +125,7 @@ func randomGet(rowCount int) {
 		go func(count int) {
 			defer wg.Done()
 
-			tx, err := themis.NewTxn(c, oracles.NewLocalOracle())
-			if err != nil {
-				log.Error(err)
-				return
-			}
+			tx := themis.NewTxn(c)
 			rowKey := fmt.Sprintf("Row_%d", rand.Intn(rowCount))
 			get := hbase.NewGet([]byte(rowKey))
 			value, err := tx.Get(tblName1, get)

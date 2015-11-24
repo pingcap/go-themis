@@ -7,25 +7,22 @@ import (
 	"strings"
 
 	"github.com/juju/errors"
+	"github.com/ngaut/log"
 	"github.com/pingcap/go-hbase"
 )
 
-type lockCleaner interface {
-	cleanPrimaryLock(cc *hbase.ColumnCoordinate, prewriteTs uint64) (uint64, ThemisLock, error)
-	eraseLockAndData(tbl []byte, row []byte, cols []hbase.Column, ts uint64) error
-	getCommitTS(cc *hbase.ColumnCoordinate, prewriteTs uint64) (uint64, error)
-	isPrimaryLockExisted(l *PrimaryLock) (bool, error)
+var _ LockManager = (*themisLockManager)(nil)
+
+type themisLockManager struct {
+	rpc         *themisRPC
+	hbaseClient hbase.HBaseClient
 }
 
-var _ lockCleaner = (*lockCleanerImpl)(nil)
-
-type lockCleanerImpl struct {
-	themisCli themisClient
-	hbaseCli  hbase.HBaseClient
-}
-
-func newLockCleaner(cli themisClient, hbaseCli hbase.HBaseClient) lockCleaner {
-	return &lockCleanerImpl{cli, hbaseCli}
+func newThemisLockManager(rpc *themisRPC, hbaseCli hbase.HBaseClient) LockManager {
+	return &themisLockManager{
+		rpc:         rpc,
+		hbaseClient: hbaseCli,
+	}
 }
 
 func getDataColFromMetaCol(lockOrWriteCol hbase.Column) hbase.Column {
@@ -42,8 +39,8 @@ func getDataColFromMetaCol(lockOrWriteCol hbase.Column) hbase.Column {
 	return c
 }
 
-func constructLocks(tbl []byte, lockKvs []*hbase.Kv, client themisClient) ([]ThemisLock, error) {
-	var locks []ThemisLock
+func getLocksFromResults(tbl []byte, lockKvs []*hbase.Kv, client *themisRPC) ([]Lock, error) {
+	var locks []Lock
 	for _, kv := range lockKvs {
 		col := &hbase.ColumnCoordinate{
 			Table: tbl,
@@ -53,7 +50,7 @@ func constructLocks(tbl []byte, lockKvs []*hbase.Kv, client themisClient) ([]The
 				Qual:   kv.Qual,
 			},
 		}
-		if !isLockColumn(&col.Column) {
+		if !isLockColumn(col.Column) {
 			return nil, errors.New("invalid lock")
 		}
 		l, err := parseLockFromBytes(kv.Value)
@@ -65,19 +62,19 @@ func constructLocks(tbl []byte, lockKvs []*hbase.Kv, client themisClient) ([]The
 			Row:    kv.Row,
 			Column: getDataColFromMetaCol(col.Column),
 		}
-		l.setColumn(cc)
+		l.SetCoordinate(cc)
 		client.checkAndSetLockIsExpired(l)
 		locks = append(locks, l)
 	}
 	return locks, nil
 }
 
-func (cleaner *lockCleanerImpl) isPrimaryLockExisted(l *PrimaryLock) (bool, error) {
-	cc := l.getColumn()
+func (m *themisLockManager) IsLockExists(cc *hbase.ColumnCoordinate, startTs, endTs uint64) (bool, error) {
 	get := hbase.NewGet(cc.Row)
+	get.AddTimeRange(startTs, endTs+1)
 	get.AddStringColumn(string(LockFamilyName), string(cc.Family)+"#"+string(cc.Qual))
 	// check if lock exists
-	rs, err := cleaner.hbaseCli.Get(string(cc.Table), get)
+	rs, err := m.hbaseClient.Get(string(cc.Table), get)
 	if err != nil {
 		return false, errors.Trace(err)
 	}
@@ -88,7 +85,7 @@ func (cleaner *lockCleanerImpl) isPrimaryLockExisted(l *PrimaryLock) (bool, erro
 	return true, nil
 }
 
-func (cleaner *lockCleanerImpl) getCommitTS(cc *hbase.ColumnCoordinate, prewriteTs uint64) (uint64, error) {
+func (m *themisLockManager) GetCommitTimestamp(cc *hbase.ColumnCoordinate, prewriteTs uint64) (uint64, error) {
 	g := hbase.NewGet(cc.Row)
 	// add put write column
 	qual := string(cc.Family) + "#" + string(cc.Qual)
@@ -97,7 +94,7 @@ func (cleaner *lockCleanerImpl) getCommitTS(cc *hbase.ColumnCoordinate, prewrite
 	g.AddStringColumn("#d", qual)
 	// time range => [ours startTs, +Inf)
 	g.AddTimeRange(prewriteTs, math.MaxInt64)
-	r, err := cleaner.hbaseCli.Get(string(cc.Table), g)
+	r, err := m.hbaseClient.Get(string(cc.Table), g)
 	if err != nil {
 		return 0, errors.Trace(err)
 	}
@@ -117,38 +114,30 @@ func (cleaner *lockCleanerImpl) getCommitTS(cc *hbase.ColumnCoordinate, prewrite
 	return 0, nil
 }
 
-func (cleaner *lockCleanerImpl) cleanPrimaryLock(cc *hbase.ColumnCoordinate, prewriteTs uint64) (uint64, ThemisLock, error) {
-	l, err := cleaner.themisCli.getLockAndErase(cc, prewriteTs)
+func (m *themisLockManager) CleanLock(cc *hbase.ColumnCoordinate, prewriteTs uint64) (uint64, Lock, error) {
+	l, err := m.rpc.getLockAndErase(cc, prewriteTs)
 	if err != nil {
 		return 0, nil, errors.Trace(err)
 	}
-	pl, _ := l.(*PrimaryLock)
+	pl, _ := l.(*themisPrimaryLock)
 	// if primary lock is nil, means someothers have already committed
 	if pl == nil {
-		commitTs, err := cleaner.getCommitTS(cc, prewriteTs)
+		commitTs, err := m.GetCommitTimestamp(cc, prewriteTs)
 		if err != nil {
 			return 0, nil, errors.Trace(err)
 		}
 		return commitTs, nil, nil
-	} else {
-		return 0, pl, nil
 	}
-	// commitTs = 0 indicates the conflicted transaction has been erased by other client; otherwise
-	// the conflicted must be committed by other client.
-	return 0, nil, nil
+	return 0, pl, nil
 }
 
-func (cleaner *lockCleanerImpl) eraseLockAndData(tbl []byte, row []byte, cols []hbase.Column, ts uint64) error {
-	d := hbase.NewDelete(row)
-	for _, col := range cols {
-		// delete lock
-		d.AddColumnWithTimestamp(LockFamilyName, []byte(string(col.Family)+"#"+string(col.Qual)), ts)
-		// delete dirty val
-		d.AddColumnWithTimestamp(col.Family, col.Qual, ts)
-	}
-	ok, err := cleaner.hbaseCli.Delete(string(tbl), d)
+func (m *themisLockManager) EraseLockAndData(cc *hbase.ColumnCoordinate, prewriteTs uint64) error {
+	d := hbase.NewDelete(cc.Row)
+	d.AddColumnWithTimestamp(LockFamilyName, []byte(string(cc.Family)+"#"+string(cc.Qual)), prewriteTs)
+	d.AddColumnWithTimestamp(cc.Family, cc.Qual, prewriteTs)
+	ok, err := m.hbaseClient.Delete(string(cc.Table), d)
 	if !ok {
-		panic("delete should ok")
+		log.Error(err)
 	}
 	return errors.Trace(err)
 }

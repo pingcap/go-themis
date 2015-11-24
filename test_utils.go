@@ -6,16 +6,30 @@ import (
 
 	"github.com/ngaut/log"
 	"github.com/pingcap/go-hbase"
+	"github.com/pingcap/go-themis/oracle/oracles"
 )
 
 const (
 	themisTestTableName string = "themis_test"
-	cfName              string = "cf"
+)
+
+var (
+	testRow = []byte("test_row")
+	cf      = []byte("cf")
+	q       = []byte("q")
 )
 
 var (
 	zk = flag.String("zk", "localhost", "hbase zookeeper info")
 )
+
+func newTxn(c hbase.HBaseClient, cfg TxnConfig) Txn {
+	txn, err := NewTxnWithConf(c, cfg, oracles.NewLocalOracle())
+	if err != nil {
+		log.Fatal(err)
+	}
+	return txn
+}
 
 func getTestZkHosts() []string {
 	zks := strings.Split(*zk, ",")
@@ -31,7 +45,6 @@ func createHBaseClient() (hbase.HBaseClient, error) {
 	if err != nil {
 		return nil, err
 	}
-
 	return cli, nil
 }
 
@@ -43,7 +56,6 @@ func createNewTableAndDropOldTable(cli hbase.HBaseClient, tblName string, family
 		}
 		log.Info("drop table : " + tblName)
 	}
-
 	t := hbase.NewTableDesciptor(hbase.NewTableNameWithDefaultNS(tblName))
 	cf := hbase.NewColumnFamilyDescriptor(family)
 	cf.AddStrAddr("THEMIS_ENABLE", "true")
@@ -60,17 +72,14 @@ func dropTable(cli hbase.HBaseClient, tblName string) error {
 		log.Info("table not exist")
 		return nil
 	}
-
 	t := hbase.NewTableNameWithDefaultNS(tblName)
 	err := cli.DisableTable(t)
 	if err != nil {
 		return err
 	}
-
 	err = cli.DropTable(t)
 	if err != nil {
 		return err
 	}
-
 	return nil
 }
