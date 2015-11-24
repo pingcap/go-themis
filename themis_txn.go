@@ -155,7 +155,11 @@ func (txn *themisTxn) Commit() error {
 	txn.selectPrimaryAndSecondaries()
 	err := txn.prewritePrimary()
 	if err != nil {
-		return errors.Trace(err)
+		// no need to check wrong region here, hbase client will retry when
+		// occurs single row NotInRegion error.
+		log.Error(err)
+		// it's safe to retry, because this transaction is not committed.
+		return kv.ErrRetryable
 	}
 
 	err = txn.prewriteSecondary()
@@ -164,14 +168,14 @@ func (txn *themisTxn) Commit() error {
 			log.Warn("region info outdated")
 			// reset hbase client buffered region info
 			txn.client.CleanAllRegionCache()
-			return ErrWrongRegion
 		}
-		return errors.Trace(err)
+		return kv.ErrRetryable
 	}
 
 	txn.commitTs, err = txn.oracle.GetTimestamp()
 	if err != nil {
-		return errors.Trace(err)
+		log.Error(err)
+		return kv.ErrRetryable
 	}
 	err = txn.commitPrimary()
 	if err != nil {
@@ -179,7 +183,7 @@ func (txn *themisTxn) Commit() error {
 		log.Error(err)
 		txn.rollbackRow(txn.primaryRow.tbl, txn.primaryRow)
 		txn.rollbackSecondaryRow(len(txn.secondaryRows) - 1)
-		return errors.Trace(err)
+		return kv.ErrRetryable
 	}
 
 	txn.commitSecondary()
