@@ -125,10 +125,7 @@ func parseLockFromBytes(b []byte) (Lock, error) {
 }
 
 func isLockResult(r *hbase.ResultRow) bool {
-	if len(r.SortedColumns) > 0 && isLockColumn(r.SortedColumns[0].Column) {
-		return true
-	}
-	return false
+	return len(r.SortedColumns) > 0 && isLockColumn(r.SortedColumns[0].Column)
 }
 
 func isLockColumn(c hbase.Column) bool {
