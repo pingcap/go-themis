@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/juju/errors"
-
 	"github.com/ngaut/log"
 	. "github.com/pingcap/check"
 	"github.com/pingcap/go-hbase"
@@ -24,16 +23,21 @@ func (s *TransactionTestSuit) SetUpSuite(c *C) {
 	var err error
 	s.cli, err = createHBaseClient()
 	c.Assert(err, Equals, nil)
-}
 
-func (s *TransactionTestSuit) SetUpTest(c *C) {
 	log.Warn("new test, reset tables")
-	err := createNewTableAndDropOldTable(s.cli, themisTestTableName, string(cf), nil)
+	err = createNewTableAndDropOldTable(s.cli, themisTestTableName, string(cf), nil)
 	c.Assert(err, IsNil)
 }
 
+func (s *TransactionTestSuit) SetUpTest(c *C) {
+}
+
+func getTestRowKey(c *C) []byte {
+	return []byte("test_row_" + c.TestName())
+}
+
 func (s *TransactionTestSuit) TestAsyncCommit(c *C) {
-	p := hbase.NewPut(testRow).AddValue(cf, q, []byte("val"))
+	p := hbase.NewPut(getTestRowKey(c)).AddValue(cf, q, []byte("val"))
 	tx := newTxn(s.cli, defaultTxnConf)
 	tx.Put(themisTestTableName, p)
 	tx.Commit()
@@ -172,7 +176,6 @@ func (s *TransactionTestSuit) TestPrimaryLockTimeout(c *C) {
 		c.Assert(err, Equals, nil)
 		// this commit must rollback
 		c.Assert(r == nil || string(r.SortedColumns[0].Value) != fmt.Sprintf("%d", ts), Equals, true)
-		log.Info(r, err)
 	}
 }
 
@@ -301,7 +304,8 @@ func (s *TransactionTestSuit) TestAsyncSecondaryCommit(c *C) {
 		p := hbase.NewPut([]byte(fmt.Sprintf("async_commit_test_%d", i))).AddValue(cf, q, []byte(fmt.Sprintf("%d", tx.GetStartTS())))
 		tx.Put(themisTestTableName, p)
 	}
-	tx.Commit()
+	err := tx.Commit()
+	c.Assert(err, IsNil)
 
 	tx = newTxn(s.cli, conf)
 	for i := 0; i < 10; i++ {
@@ -316,7 +320,7 @@ func (s *TransactionTestSuit) TestTTL(c *C) {
 	conf := defaultTxnConf
 	conf.brokenCommitPrimaryTest = true
 	tx := newTxn(s.cli, conf)
-	p := hbase.NewPut(testRow).AddValue(cf, q, []byte("val"))
+	p := hbase.NewPut(getTestRowKey(c)).AddValue(cf, q, []byte("val"))
 	tx.Put(themisTestTableName, p)
 	tx.Commit()
 
@@ -324,7 +328,7 @@ func (s *TransactionTestSuit) TestTTL(c *C) {
 	conf = defaultTxnConf
 	conf.TTLInMs = 1000
 	tx = newTxn(s.cli, conf)
-	rs, err := tx.Get(themisTestTableName, hbase.NewGet(testRow).AddColumn(cf, q))
+	rs, err := tx.Get(themisTestTableName, hbase.NewGet(getTestRowKey(c)).AddColumn(cf, q))
 	c.Assert(time.Since(startTs).Seconds(), Greater, float64(1))
 	c.Assert(time.Since(startTs).Seconds(), Less, float64(1.5))
 	// transction timeout, alreay rolled back.
@@ -352,14 +356,14 @@ func (s *TransactionTestSuit) TestPhantomRead(c *C) {
 	conf.brokenCommitPrimaryTest = true
 	o.tick = 1
 	tx, _ := NewTxnWithConf(s.cli, conf, o)
-	p := hbase.NewPut(testRow).AddValue(cf, q, []byte("val"))
+	p := hbase.NewPut(getTestRowKey(c)).AddValue(cf, q, []byte("val"))
 	o.tick = 3
 	tx.Put(themisTestTableName, p)
 	tx.Commit()
 
 	o.tick = 2
 	tx, _ = NewTxn(s.cli, o)
-	rs, err := tx.Get(themisTestTableName, hbase.NewGet(testRow).AddColumn(cf, q))
+	rs, err := tx.Get(themisTestTableName, hbase.NewGet(getTestRowKey(c)).AddColumn(cf, q))
 	c.Assert(err, NotNil)
 	c.Assert(rs, IsNil)
 }

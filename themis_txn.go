@@ -210,7 +210,6 @@ func (txn *themisTxn) commitSecondarySync() {
 }
 
 func (txn *themisTxn) batchCommitSecondary(wait bool) {
-	log.Info("batch commit secondary")
 	//will batch commit all rows in a region
 	rsRowMap := txn.groupByRegion()
 
@@ -400,9 +399,13 @@ func (txn *themisTxn) tryToCleanLock(lock Lock) error {
 				// if this transction has been committed
 				log.Info("txn has been committed, ts:", commitTs, "prewriteTs:", pl.Timestamp())
 				// commit secondary row
-				return txn.commitSecondaryAndCleanLock(lock.(*themisSecondaryLock), commitTs)
+				err := txn.commitSecondaryAndCleanLock(lock.(*themisSecondaryLock), commitTs)
+				if err != nil {
+					log.Error(err)
+					return errors.Trace(err)
+				}
+				return nil
 			}
-			log.Info("primary lock not found, may have already rolled back")
 		}
 	}
 	expired, err := txn.rpc.checkAndSetLockIsExpired(lock)
@@ -412,7 +415,6 @@ func (txn *themisTxn) tryToCleanLock(lock Lock) error {
 	// only clean expired lock
 	if expired {
 		// try to clean primary lock
-		log.Info("lock expired, try clean primary lock")
 		pl := lock.Primary()
 		commitTs, cleanedLock, err := txn.lockCleaner.CleanLock(pl.Coordinate(), pl.Timestamp())
 		if err != nil {
@@ -598,7 +600,6 @@ func (txn *themisTxn) batchPrewriteSecondaries() error {
 	//will batch prewrite all rows in a region
 	rsRowMap := txn.groupByRegion()
 
-	log.Info("batchPrewriteSecondaries ")
 	errChan := make(chan error, len(rsRowMap))
 	defer close(errChan)
 	successChan := make(chan map[string]*rowMutation, len(rsRowMap))
