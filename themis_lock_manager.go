@@ -93,7 +93,8 @@ func (m *themisLockManager) GetCommitTimestamp(cc *hbase.ColumnCoordinate, prewr
 	// add del write column
 	g.AddStringColumn("#d", qual)
 	// time range => [ours startTs, +Inf)
-	g.AddTimeRange(prewriteTs, math.MaxInt64)
+	g.AddTimeRange(prewriteTs, math.MaxInt32)
+	g.SetMaxVersion(math.MaxInt32)
 	r, err := m.hbaseClient.Get(string(cc.Table), g)
 	if err != nil {
 		return 0, errors.Trace(err)
@@ -103,11 +104,13 @@ func (m *themisLockManager) GetCommitTimestamp(cc *hbase.ColumnCoordinate, prewr
 		return 0, nil
 	}
 	for _, kv := range r.SortedColumns {
-		var ts uint64
-		binary.Read(bytes.NewBuffer(kv.Value), binary.BigEndian, &ts)
-		if ts == prewriteTs {
-			// get this commit's commitTs
-			return kv.Ts, nil
+		for commitTs, val := range kv.Values {
+			var ts uint64
+			binary.Read(bytes.NewBuffer(val), binary.BigEndian, &ts)
+			if ts == prewriteTs {
+				// get this commit's commitTs
+				return commitTs, nil
+			}
 		}
 	}
 	// no such transction

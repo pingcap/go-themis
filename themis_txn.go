@@ -432,7 +432,7 @@ func (txn *themisTxn) tryToCleanLock(lock Lock) error {
 		if cleanedLock != nil {
 			pl = cleanedLock
 		}
-		log.Info("try clean secondary locks")
+		log.Info("try clean secondary locks", pl.Timestamp())
 		// clean secondary locks
 		// erase lock and data if commitTs is 0; otherwise, commit it.
 		for k, v := range pl.(*themisPrimaryLock).secondaries {
