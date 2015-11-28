@@ -52,6 +52,7 @@ type themisTxn struct {
 	singleRowTxn       bool
 	secondaryLockBytes []byte
 	conf               TxnConfig
+	hooks              txnHook
 }
 
 var _ Txn = (*themisTxn)(nil)
@@ -83,6 +84,25 @@ func NewTxnWithConf(c hbase.HBaseClient, conf TxnConfig, oracle oracle.Oracle) (
 	}
 	txn.lockCleaner = newThemisLockManager(txn.rpc, c)
 	return txn, nil
+}
+
+func (txn *themisTxn) setHook(hooks txnHook) {
+	txn.hooks = hooks
+}
+
+func (txn *themisTxn) hook(point hookPoint, ctx interface{}) (bool, interface{}, error) {
+	if txn.hooks == nil {
+		return false, nil, nil
+	}
+	if _, ok := txn.hooks[point]; !ok {
+		return false, nil, nil
+	}
+	fn := txn.hooks[point]
+	if bypass, ret, err := fn(txn, ctx); bypass {
+		return false, nil, nil
+	} else {
+		return true, ret, err
+	}
 }
 
 func (txn *themisTxn) Gets(tbl string, gets []*hbase.Get) ([]*hbase.ResultRow, error) {
@@ -185,17 +205,20 @@ func (txn *themisTxn) Commit() error {
 	err = txn.commitPrimary()
 	if err != nil {
 		// commit primary error, rollback
-		log.Error(errors.ErrorStack(err))
+		log.Error("commit primary row failed", txn.startTs, err)
 		txn.rollbackRow(txn.primaryRow.tbl, txn.primaryRow)
 		txn.rollbackSecondaryRow(len(txn.secondaryRows) - 1)
 		return kv.ErrRetryable
 	}
-
 	txn.commitSecondary()
+	log.Debug("themis txn commit successfully", txn.startTs, txn.commitTs)
 	return nil
 }
 
 func (txn *themisTxn) commitSecondary() {
+	if hooked, _, _ := txn.hook(hookBeforeCommitSecondary, nil); hooked {
+		return
+	}
 	if txn.conf.brokenCommitSecondaryTest {
 		txn.brokenCommitSecondary()
 		return
@@ -289,6 +312,8 @@ func (txn *themisTxn) selectPrimaryAndSecondaries() {
 			}
 		}
 	}
+	txn.hook(hookAfterChoosePrimary, txn.primaryRow)
+	txn.hook(hookAfterChooseSecondary, txn.secondaryRows)
 	if len(txn.secondaryRows) == 0 {
 		txn.singleRowTxn = true
 	}
@@ -371,10 +396,11 @@ func (txn *themisTxn) cleanLockWithRetry(lock Lock) error {
 		if exists, err := txn.lockCleaner.IsLockExists(lock.Coordinate(), 0, lock.Timestamp()); err != nil || !exists {
 			return errors.Trace(err)
 		}
+		log.Warnf("lock exists txn: %v lock-txn: %v row: %q", txn.startTs, lock.Timestamp(), lock.Coordinate().Row)
 		// try clean lock
 		err := txn.tryToCleanLock(lock)
 		if terror.ErrorEqual(err, ErrLockNotExpired) {
-			log.Warn("sleep a while, and retry clean lock")
+			log.Warn("sleep a while, and retry clean lock", txn.startTs)
 			// TODO(dongxu) use cleverer retry sleep time interval
 			time.Sleep(pauseTime)
 			continue
@@ -476,6 +502,9 @@ func (txn *themisTxn) batchPrewriteSecondaryRowsWithLockClean(tbl []byte, rowMs 
 
 	// lock clean
 	if locks != nil && len(locks) > 0 {
+		if hooked, _, err := txn.hook(hookOnSecondaryOccursLock, locks); hooked {
+			return err
+		}
 		// try one more time after clean lock successfully
 		for row, lock := range locks {
 			err = txn.cleanLockWithRetry(lock)
@@ -485,6 +514,7 @@ func (txn *themisTxn) batchPrewriteSecondaryRowsWithLockClean(tbl []byte, rowMs 
 
 			//TODO: check lock expire
 			lock, err = txn.prewriteRow(tbl, rowMs[row], false)
+			log.Warn("prewrite secondary clean lock:", rowMs[row], txn.startTs, lock, err)
 			if err != nil {
 				return errors.Trace(err)
 			}
@@ -504,6 +534,9 @@ func (txn *themisTxn) prewriteRowWithLockClean(tbl []byte, mutation *rowMutation
 	}
 	// lock clean
 	if lock != nil {
+		if hooked, _, err := txn.hook(hookBeforePrewriteLockClean, lock); hooked {
+			return err
+		}
 		err = txn.cleanLockWithRetry(lock)
 		if err != nil {
 			return errors.Trace(err)
@@ -526,6 +559,9 @@ func (txn *themisTxn) batchPrewriteSecondaryRows(tbl []byte, rowMs map[string]*r
 }
 
 func (txn *themisTxn) prewriteRow(tbl []byte, mutation *rowMutation, containPrimary bool) (Lock, error) {
+	if hooked, ret, err := txn.hook(hookOnPrewriteRow, []interface{}{mutation, containPrimary}); hooked {
+		return ret.(Lock), err
+	}
 	if containPrimary {
 		// try to get lock
 		return txn.rpc.prewriteRow(tbl, mutation.row,
@@ -533,24 +569,30 @@ func (txn *themisTxn) prewriteRow(tbl []byte, mutation *rowMutation, containPrim
 			txn.startTs,
 			txn.constructPrimaryLock().Encode(),
 			txn.secondaryLockBytes, txn.primaryRowOffset)
-	} else {
-		return txn.rpc.prewriteSecondaryRow(tbl, mutation.row,
-			mutation.mutationList(true),
-			txn.startTs,
-			txn.secondaryLockBytes)
 	}
-	return nil, nil
+	return txn.rpc.prewriteSecondaryRow(tbl, mutation.row,
+		mutation.mutationList(true),
+		txn.startTs,
+		txn.secondaryLockBytes)
 }
 
 func (txn *themisTxn) prewritePrimary() error {
+	if hooked, _, err := txn.hook(hookBeforePrewritePrimary, nil); hooked {
+		return err
+	}
 	err := txn.prewriteRowWithLockClean(txn.primary.Table, txn.primaryRow, true)
 	if err != nil {
+		log.Debugf("prewrite primary %v %q failed: %v", txn.startTs, txn.primaryRow.row, err.Error())
 		return errors.Trace(err)
 	}
+	log.Debugf("prewrite primary %v %q successfully", txn.startTs, txn.primaryRow.row)
 	return nil
 }
 
 func (txn *themisTxn) prewriteSecondary() error {
+	if hooked, _, err := txn.hook(hookBeforePrewriteSecondary, nil); hooked {
+		return err
+	}
 	if txn.conf.brokenPrewriteSecondaryTest {
 		return txn.brokenPrewriteSecondary()
 	}
@@ -630,7 +672,7 @@ func (txn *themisTxn) batchPrewriteSecondaries() error {
 
 	if len(errChan) != 0 {
 		// occur error, clean success prewrite mutations
-		log.Warn("batch prewrite secondary rows error, rolling back", len(successChan))
+		log.Warnf("batch prewrite secondary rows error, rolling back %d %d", len(successChan), txn.startTs)
 		txn.rollbackRow(txn.primaryRow.tbl, txn.primaryRow)
 	L:
 		for {
@@ -646,7 +688,11 @@ func (txn *themisTxn) batchPrewriteSecondaries() error {
 			}
 		}
 
-		return <-errChan
+		err := <-errChan
+		if err != nil {
+			log.Error("batch prewrite secondary rows error, txn:", txn.startTs, err)
+		}
+		return err
 	}
 	return nil
 }
@@ -668,7 +714,7 @@ func getBatchGroupKey(rInfo *hbase.RegionInfo, tblName string) string {
 }
 
 func (txn *themisTxn) rollbackRow(tbl []byte, mutation *rowMutation) error {
-	l := fmt.Sprintf("\nrolling back %s {\n", string(tbl))
+	l := fmt.Sprintf("\nrolling back %q %d {\n", mutation.row, txn.startTs)
 	for _, v := range mutation.getColumns() {
 		l += fmt.Sprintf("\t%s:%s\n", string(v.Family), string(v.Qual))
 	}

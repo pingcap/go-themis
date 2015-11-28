@@ -378,3 +378,48 @@ func (s *TransactionTestSuit) TestExceedMaxRows(c *C) {
 	err := tx.Commit()
 	c.Assert(err, NotNil)
 }
+
+func (s *TransactionTestSuit) TestCheckCommitStatus(c *C) {
+	conf := defaultTxnConf
+	hook := newHook()
+	hook.addPoint(hookBeforeCommitSecondary, func(txn *themisTxn, ctx interface{}) (bool, interface{}, error) {
+		// add before commit secondary hook, just return, do not commit
+		// secondaries
+		log.Info("before commit secondary")
+		return false, nil, nil
+	})
+	tx := newTxn(s.cli, conf)
+	tx.(*themisTxn).setHook(hook)
+	for i := 0; i < 10; i++ {
+		tx.Put(themisTestTableName, hbase.NewPut([]byte(fmt.Sprintf("%s_%d", getTestRowKey(c), i))).AddValue(cf, q, []byte("test")))
+	}
+	tx.Commit()
+	commitTs := tx.(*themisTxn).commitTs
+
+	pRow := append([]byte(nil), tx.(*themisTxn).primaryRow.row...)
+	sRow := append([]byte(nil), tx.(*themisTxn).secondaryRows[0].row...)
+
+	for i := 0; i < 10; i++ {
+		conf = defaultTxnConf
+		tx = newTxn(s.cli, conf)
+		tx.Put(themisTestTableName, hbase.NewPut([]byte(pRow)).AddValue(cf, q, []byte("newVal")))
+		tx.Commit()
+	}
+
+	hook = newHook()
+	hook.addPoint(hookBeforePrewriteLockClean, func(txn *themisTxn, ctx interface{}) (bool, interface{}, error) {
+		lock := ctx.(Lock)
+		cc := lock.Primary().Coordinate()
+		exists, err := txn.lockCleaner.IsLockExists(lock.Coordinate(), 0, lock.Timestamp())
+		c.Assert(err, IsNil)
+		c.Assert(exists, Equals, true)
+		ts, err := txn.lockCleaner.GetCommitTimestamp(cc, lock.Timestamp())
+		c.Assert(err, IsNil)
+		c.Assert(ts, Equals, commitTs)
+		return true, nil, nil
+	})
+	tx = newTxn(s.cli, conf)
+	tx.(*themisTxn).setHook(hook)
+	tx.Put(themisTestTableName, hbase.NewPut([]byte(sRow)).AddValue(cf, q, []byte("newVal")))
+	tx.Commit()
+}

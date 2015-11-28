@@ -135,6 +135,7 @@ func (m *themisLockManager) CleanLock(cc *hbase.ColumnCoordinate, prewriteTs uin
 }
 
 func (m *themisLockManager) EraseLockAndData(cc *hbase.ColumnCoordinate, prewriteTs uint64) error {
+	log.Debugf("erase row=%q txn=%d", cc.Row, prewriteTs)
 	d := hbase.NewDelete(cc.Row)
 	d.AddColumnWithTimestamp(LockFamilyName, []byte(string(cc.Family)+"#"+string(cc.Qual)), prewriteTs)
 	d.AddColumnWithTimestamp(cc.Family, cc.Qual, prewriteTs)
