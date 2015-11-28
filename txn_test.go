@@ -423,3 +423,82 @@ func (s *TransactionTestSuit) TestCheckCommitStatus(c *C) {
 	tx.Put(themisTestTableName, hbase.NewPut([]byte(sRow)).AddValue(cf, q, []byte("newVal")))
 	tx.Commit()
 }
+
+func createChoosePrimaryRowHook(target string) txnHook {
+	hook := newHook()
+	hook.addPoint(hookAfterChooseSecondary, func(txn *themisTxn, ctx interface{}) (bool, interface{}, error) {
+		txn.secondary = nil
+		txn.secondaryRows = nil
+		for tblName, rowMutations := range txn.mutationCache.mutations {
+			for _, rowMutation := range rowMutations {
+				row := rowMutation.row
+				for i, mutation := range rowMutation.mutationList(true) {
+					colcord := hbase.NewColumnCoordinate([]byte(tblName), row, mutation.Family, mutation.Qual)
+					// set the first column as primary if primary is not set by user
+					if string(row) == target {
+						txn.primary = colcord
+						txn.primaryRowOffset = i
+						txn.primaryRow = rowMutation
+					} else {
+						txn.secondary = append(txn.secondary, colcord)
+					}
+				}
+				if string(row) != target {
+					txn.secondaryRows = append(txn.secondaryRows, rowMutation)
+				}
+			}
+		}
+		return true, nil, nil
+	})
+	return hook
+}
+
+func (s *TransactionTestSuit) TestPrewriteSecondaryMissingRows(c *C) {
+	conf := defaultTxnConf
+	hook := createChoosePrimaryRowHook("A")
+	hook.addPoint(hookBeforePrewriteSecondary, func(txn *themisTxn, ctx interface{}) (bool, interface{}, error) {
+		go func() {
+			hook2 := createChoosePrimaryRowHook("B")
+			hook2.addPoint(hookOnSecondaryOccursLock, func(txn *themisTxn, ctx interface{}) (bool, interface{}, error) {
+				log.Info("tx2 occurs secondary lock", ctx)
+				return true, nil, nil
+			})
+			tx2 := newTxn(s.cli, conf)
+			tx2.(*themisTxn).setHook(hook2)
+			tx2.Put(themisTestTableName, hbase.NewPut([]byte("A")).AddValue(cf, q, []byte("A")))
+			tx2.Put(themisTestTableName, hbase.NewPut([]byte("B")).AddValue(cf, q, []byte("B")))
+			tx2.Put(themisTestTableName, hbase.NewPut([]byte("C")).AddValue(cf, q, []byte("C")))
+			tx2.Commit()
+		}()
+		time.Sleep(500 * time.Millisecond)
+		return true, nil, nil
+	})
+
+	hook.addPoint(hookOnSecondaryOccursLock, func(txn *themisTxn, ctx interface{}) (bool, interface{}, error) {
+		log.Info("tx1", ctx)
+		return true, nil, nil
+	})
+
+	hook.addPoint(hookOnPrewriteRow, func(txn *themisTxn, ctx interface{}) (bool, interface{}, error) {
+		containPrimary := ctx.([]interface{})[1].(bool)
+		if !containPrimary {
+			rm := ctx.([]interface{})[0].(*rowMutation)
+			log.Info(string(rm.row))
+		}
+
+		return true, nil, nil
+	})
+
+	tx1 := newTxn(s.cli, conf)
+	tx1.(*themisTxn).setHook(hook)
+	tx1.Put(themisTestTableName, hbase.NewPut([]byte("A")).AddValue(cf, q, []byte("A")))
+	tx1.Put(themisTestTableName, hbase.NewPut([]byte("B")).AddValue(cf, q, []byte("B")))
+	tx1.Put(themisTestTableName, hbase.NewPut([]byte("C")).AddValue(cf, q, []byte("C")))
+	tx1.Commit()
+
+	tx3 := newTxn(s.cli, conf)
+	rs, err := tx3.Get(themisTestTableName, hbase.NewGet([]byte("C")).AddColumn(cf, q))
+	c.Assert(rs, NotNil)
+	c.Assert(err, IsNil)
+	tx3.Commit()
+}
