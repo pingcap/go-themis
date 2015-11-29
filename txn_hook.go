@@ -6,17 +6,17 @@ type fnHook func(txn *themisTxn, ctx interface{}) (bypass bool, ret interface{},
 type hookPoint int
 
 const (
-	hookAfterChoosePrimary hookPoint = iota
-	hookAfterChooseSecondary
-	hookBeforePrewritePrimary
-	hookBeforePrewriteLockClean
-	hookBeforePrewriteSecondary
-	hookBeforeCommitPrimary
-	hookBeforeCommitSecondary
-	hookOnSecondaryOccursLock
-	hookOnPrewriteRow
-	hookOnTxnSuccess
-	hookOnTxnFailed
+	afterChoosePrimary hookPoint = iota
+	afterChooseSecondary
+	beforePrewritePrimary
+	beforePrewriteLockClean
+	beforePrewriteSecondary
+	beforeCommitPrimary
+	beforeCommitSecondary
+	onSecondaryOccursLock
+	onPrewriteRow
+	onTxnSuccess
+	onTxnFailed
 )
 
 type txnHook map[hookPoint]fnHook

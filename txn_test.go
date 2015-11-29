@@ -382,7 +382,7 @@ func (s *TransactionTestSuit) TestExceedMaxRows(c *C) {
 func (s *TransactionTestSuit) TestCheckCommitStatus(c *C) {
 	conf := defaultTxnConf
 	hook := newHook()
-	hook.addPoint(hookBeforeCommitSecondary, func(txn *themisTxn, ctx interface{}) (bool, interface{}, error) {
+	hook.addPoint(beforeCommitSecondary, func(txn *themisTxn, ctx interface{}) (bool, interface{}, error) {
 		// add before commit secondary hook, just return, do not commit
 		// secondaries
 		log.Info("before commit secondary")
@@ -407,7 +407,7 @@ func (s *TransactionTestSuit) TestCheckCommitStatus(c *C) {
 	}
 
 	hook = newHook()
-	hook.addPoint(hookBeforePrewriteLockClean, func(txn *themisTxn, ctx interface{}) (bool, interface{}, error) {
+	hook.addPoint(beforePrewriteLockClean, func(txn *themisTxn, ctx interface{}) (bool, interface{}, error) {
 		lock := ctx.(Lock)
 		cc := lock.Primary().Coordinate()
 		exists, err := txn.lockCleaner.IsLockExists(lock.Coordinate(), 0, lock.Timestamp())
@@ -426,7 +426,7 @@ func (s *TransactionTestSuit) TestCheckCommitStatus(c *C) {
 
 func createChoosePrimaryRowHook(target string) txnHook {
 	hook := newHook()
-	hook.addPoint(hookAfterChooseSecondary, func(txn *themisTxn, ctx interface{}) (bool, interface{}, error) {
+	hook.addPoint(afterChooseSecondary, func(txn *themisTxn, ctx interface{}) (bool, interface{}, error) {
 		txn.secondary = nil
 		txn.secondaryRows = nil
 		for tblName, rowMutations := range txn.mutationCache.mutations {
@@ -456,10 +456,10 @@ func createChoosePrimaryRowHook(target string) txnHook {
 func (s *TransactionTestSuit) TestPrewriteSecondaryMissingRows(c *C) {
 	conf := defaultTxnConf
 	hook := createChoosePrimaryRowHook("A")
-	hook.addPoint(hookBeforePrewriteSecondary, func(txn *themisTxn, ctx interface{}) (bool, interface{}, error) {
+	hook.addPoint(beforePrewriteSecondary, func(txn *themisTxn, ctx interface{}) (bool, interface{}, error) {
 		go func() {
 			hook2 := createChoosePrimaryRowHook("B")
-			hook2.addPoint(hookOnSecondaryOccursLock, func(txn *themisTxn, ctx interface{}) (bool, interface{}, error) {
+			hook2.addPoint(onSecondaryOccursLock, func(txn *themisTxn, ctx interface{}) (bool, interface{}, error) {
 				log.Info("tx2 occurs secondary lock", ctx)
 				return true, nil, nil
 			})
@@ -474,12 +474,12 @@ func (s *TransactionTestSuit) TestPrewriteSecondaryMissingRows(c *C) {
 		return true, nil, nil
 	})
 
-	hook.addPoint(hookOnSecondaryOccursLock, func(txn *themisTxn, ctx interface{}) (bool, interface{}, error) {
+	hook.addPoint(onSecondaryOccursLock, func(txn *themisTxn, ctx interface{}) (bool, interface{}, error) {
 		log.Info("tx1", ctx)
 		return true, nil, nil
 	})
 
-	hook.addPoint(hookOnPrewriteRow, func(txn *themisTxn, ctx interface{}) (bool, interface{}, error) {
+	hook.addPoint(onPrewriteRow, func(txn *themisTxn, ctx interface{}) (bool, interface{}, error) {
 		containPrimary := ctx.([]interface{})[1].(bool)
 		if !containPrimary {
 			rm := ctx.([]interface{})[0].(*rowMutation)

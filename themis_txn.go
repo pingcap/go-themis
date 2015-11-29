@@ -216,7 +216,7 @@ func (txn *themisTxn) Commit() error {
 }
 
 func (txn *themisTxn) commitSecondary() {
-	if hooked, _, _ := txn.hook(hookBeforeCommitSecondary, nil); hooked {
+	if hooked, _, _ := txn.hook(beforeCommitSecondary, nil); hooked {
 		return
 	}
 	if txn.conf.brokenCommitSecondaryTest {
@@ -312,8 +312,8 @@ func (txn *themisTxn) selectPrimaryAndSecondaries() {
 			}
 		}
 	}
-	txn.hook(hookAfterChoosePrimary, txn.primaryRow)
-	txn.hook(hookAfterChooseSecondary, txn.secondaryRows)
+	txn.hook(afterChoosePrimary, txn.primaryRow)
+	txn.hook(afterChooseSecondary, txn.secondaryRows)
 	if len(txn.secondaryRows) == 0 {
 		txn.singleRowTxn = true
 	}
@@ -502,24 +502,25 @@ func (txn *themisTxn) batchPrewriteSecondaryRowsWithLockClean(tbl []byte, rowMs 
 
 	// lock clean
 	if locks != nil && len(locks) > 0 {
-		if hooked, _, err := txn.hook(hookOnSecondaryOccursLock, locks); hooked {
+		if hooked, _, err := txn.hook(onSecondaryOccursLock, locks); hooked {
 			return err
 		}
 		// try one more time after clean lock successfully
-		for row, lock := range locks {
+		for _, lock := range locks {
 			err = txn.cleanLockWithRetry(lock)
 			if err != nil {
 				return errors.Trace(err)
 			}
 
-			//TODO: check lock expire
-			lock, err = txn.prewriteRow(tbl, rowMs[row], false)
-			log.Warn("prewrite secondary clean lock:", rowMs[row], txn.startTs, lock, err)
+			// prewrite all secondary rows
+			locks, err = txn.batchPrewriteSecondaryRows(tbl, rowMs)
 			if err != nil {
 				return errors.Trace(err)
 			}
-			if lock != nil {
-				log.Errorf("can't clean lock, column:%q; conflict lock: %+v, lock ts: %d", lock.Coordinate(), lock, lock.Timestamp())
+			if len(locks) > 0 {
+				for _, l := range locks {
+					log.Errorf("can't clean lock, column:%q; conflict lock: %+v, lock ts: %d", l.Coordinate(), l, l.Timestamp())
+				}
 				return kv.ErrLockConflict
 			}
 		}
@@ -534,7 +535,7 @@ func (txn *themisTxn) prewriteRowWithLockClean(tbl []byte, mutation *rowMutation
 	}
 	// lock clean
 	if lock != nil {
-		if hooked, _, err := txn.hook(hookBeforePrewriteLockClean, lock); hooked {
+		if hooked, _, err := txn.hook(beforePrewriteLockClean, lock); hooked {
 			return err
 		}
 		err = txn.cleanLockWithRetry(lock)
@@ -559,7 +560,7 @@ func (txn *themisTxn) batchPrewriteSecondaryRows(tbl []byte, rowMs map[string]*r
 }
 
 func (txn *themisTxn) prewriteRow(tbl []byte, mutation *rowMutation, containPrimary bool) (Lock, error) {
-	if hooked, ret, err := txn.hook(hookOnPrewriteRow, []interface{}{mutation, containPrimary}); hooked {
+	if hooked, ret, err := txn.hook(onPrewriteRow, []interface{}{mutation, containPrimary}); hooked {
 		return ret.(Lock), err
 	}
 	if containPrimary {
@@ -577,7 +578,7 @@ func (txn *themisTxn) prewriteRow(tbl []byte, mutation *rowMutation, containPrim
 }
 
 func (txn *themisTxn) prewritePrimary() error {
-	if hooked, _, err := txn.hook(hookBeforePrewritePrimary, nil); hooked {
+	if hooked, _, err := txn.hook(beforePrewritePrimary, nil); hooked {
 		return err
 	}
 	err := txn.prewriteRowWithLockClean(txn.primary.Table, txn.primaryRow, true)
@@ -590,7 +591,7 @@ func (txn *themisTxn) prewritePrimary() error {
 }
 
 func (txn *themisTxn) prewriteSecondary() error {
-	if hooked, _, err := txn.hook(hookBeforePrewriteSecondary, nil); hooked {
+	if hooked, _, err := txn.hook(beforePrewriteSecondary, nil); hooked {
 		return err
 	}
 	if txn.conf.brokenPrewriteSecondaryTest {
@@ -698,15 +699,10 @@ func (txn *themisTxn) batchPrewriteSecondaries() error {
 }
 
 func getFirstEntity(rowMap map[string]*rowMutation) (string, *rowMutation) {
-	var firstRow string
-	var firstRowM *rowMutation
 	for row, rowM := range rowMap {
-		firstRow = row
-		firstRowM = rowM
-		break
+		return row, rowM
 	}
-
-	return firstRow, firstRowM
+	return "", nil
 }
 
 func getBatchGroupKey(rInfo *hbase.RegionInfo, tblName string) string {
