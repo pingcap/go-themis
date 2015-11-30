@@ -16,14 +16,27 @@ import (
 	"github.com/ngaut/log"
 	"github.com/pingcap/go-hbase"
 	"github.com/pingcap/go-themis"
+	"github.com/pingcap/go-themis/oracle/oracles"
 )
 
 var c hbase.HBaseClient
 var tblName1 = "themis_1"
 var tblName2 = "themis_2"
+var o = oracles.NewLocalOracle()
+
+var letterRunes = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
+
+func RandStringRunes(n int) string {
+	b := make([]rune, n)
+	for i := range b {
+		b[i] = letterRunes[rand.Intn(len(letterRunes))]
+	}
+	return string(b)
+}
 
 // some comments
 func init() {
+	rand.Seed(time.Now().UnixNano())
 	log.Errorf("create conn")
 	var err error
 	c, err = hbase.NewClient([]string{"localhost"}, "/hbase")
@@ -65,17 +78,25 @@ func main() {
 		log.Error(http.ListenAndServe("localhost:8889", nil))
 	}()
 
-	batchInsert(5, 50000)
+	wg := &sync.WaitGroup{}
+	for i := 0; i < 10; i++ {
+		wg.Add(1)
+		go func() {
+			batchInsert(1, 50000)
+			wg.Done()
+		}()
+	}
+	wg.Wait()
 }
 
 func batchInsert(round int, rowCount int) {
 	for i := 0; i < round; i++ {
 		log.Errorf("begin batch insert")
 		ct := time.Now()
-		tx := themis.NewTxn(c)
+		tx, _ := themis.NewTxn(c, o)
 		for j := 0; j < rowCount; j++ {
-			put := hbase.NewPut([]byte(fmt.Sprintf("Row_%d_%d", j, i)))
-			put.AddValue([]byte("cf"), []byte("q"), bytes.Repeat([]byte{'A'}, 512))
+			put := hbase.NewPut([]byte(RandStringRunes(20)))
+			put.AddValue([]byte("cf"), []byte("q"), bytes.Repeat([]byte{'A'}, 80))
 			tx.Put(tblName1, put)
 		}
 		err := tx.Commit()
@@ -94,7 +115,7 @@ func insert(rowCount int) {
 		go func(i int) {
 			defer wg.Done()
 
-			tx := themis.NewTxn(c)
+			tx, _ := themis.NewTxn(c, o)
 
 			put := hbase.NewPut([]byte(fmt.Sprintf("Row_%d", i)))
 			put.AddValue([]byte("cf"), []byte("q"), []byte(strconv.Itoa(i)))
@@ -125,7 +146,7 @@ func randomGet(rowCount int) {
 		go func(count int) {
 			defer wg.Done()
 
-			tx := themis.NewTxn(c)
+			tx, _ := themis.NewTxn(c, o)
 			rowKey := fmt.Sprintf("Row_%d", rand.Intn(rowCount))
 			get := hbase.NewGet([]byte(rowKey))
 			value, err := tx.Get(tblName1, get)
