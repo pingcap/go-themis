@@ -483,7 +483,8 @@ func (s *TransactionTestSuit) TestPrewriteSecondaryMissingRows(c *C) {
 	tx1.Put(themisTestTableName, hbase.NewPut([]byte("A")).AddValue(cf, q, []byte("A")))
 	tx1.Put(themisTestTableName, hbase.NewPut([]byte("B")).AddValue(cf, q, []byte("B")))
 	tx1.Put(themisTestTableName, hbase.NewPut([]byte("C")).AddValue(cf, q, []byte("C")))
-	tx1.Commit()
+	err := tx1.Commit()
+	c.Assert(err, IsNil)
 
 	tx3 := newTxn(s.cli, conf)
 	rs, err := tx3.Get(themisTestTableName, hbase.NewGet([]byte("C")).AddColumn(cf, q))

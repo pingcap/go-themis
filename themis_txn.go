@@ -202,10 +202,8 @@ func (txn *themisTxn) Commit() error {
 }
 
 func (txn *themisTxn) commitSecondary() {
-	if txn.hooks.beforeCommitSecondary != nil {
-		if bypass, _, _ := txn.hooks.beforeCommitSecondary(txn, nil); !bypass {
-			return
-		}
+	if bypass, _, _ := txn.hooks.beforeCommitSecondary(txn, nil); !bypass {
+		return
 	}
 	if txn.conf.brokenCommitSecondaryTest {
 		txn.brokenCommitSecondary()
@@ -302,10 +300,8 @@ func (txn *themisTxn) selectPrimaryAndSecondaries() {
 	}
 
 	// hook for test
-	if txn.hooks.afterChoosePrimaryAndSecondary != nil {
-		if bypass, _, _ := txn.hooks.afterChoosePrimaryAndSecondary(txn, nil); !bypass {
-			return
-		}
+	if bypass, _, _ := txn.hooks.afterChoosePrimaryAndSecondary(txn, nil); !bypass {
+		return
 	}
 
 	if len(txn.secondaryRows) == 0 {
@@ -497,10 +493,8 @@ func (txn *themisTxn) batchPrewriteSecondaryRowsWithLockClean(tbl []byte, rowMs 
 	// lock clean
 	if locks != nil && len(locks) > 0 {
 		// hook for test
-		if txn.hooks.onSecondaryOccursLock != nil {
-			if bypass, _, err := txn.hooks.onSecondaryOccursLock(txn, locks); !bypass {
-				return errors.Trace(err)
-			}
+		if bypass, _, err := txn.hooks.onSecondaryOccursLock(txn, locks); !bypass {
+			return errors.Trace(err)
 		}
 		// try one more time after clean lock successfully
 		for _, lock := range locks {
@@ -533,10 +527,8 @@ func (txn *themisTxn) prewriteRowWithLockClean(tbl []byte, mutation *rowMutation
 	// lock clean
 	if lock != nil {
 		// hook for test
-		if txn.hooks.beforePrewriteLockClean != nil {
-			if bypass, _, err := txn.hooks.beforePrewriteLockClean(txn, lock); !bypass {
-				return errors.Trace(err)
-			}
+		if bypass, _, err := txn.hooks.beforePrewriteLockClean(txn, lock); !bypass {
+			return errors.Trace(err)
 		}
 		err = txn.cleanLockWithRetry(lock)
 		if err != nil {
@@ -561,10 +553,8 @@ func (txn *themisTxn) batchPrewriteSecondaryRows(tbl []byte, rowMs map[string]*r
 
 func (txn *themisTxn) prewriteRow(tbl []byte, mutation *rowMutation, containPrimary bool) (Lock, error) {
 	// hook for test
-	if txn.hooks.onPrewriteRow != nil {
-		if bypass, ret, err := txn.hooks.onPrewriteRow(txn, []interface{}{mutation, containPrimary}); !bypass {
-			return ret.(Lock), errors.Trace(err)
-		}
+	if bypass, ret, err := txn.hooks.onPrewriteRow(txn, []interface{}{mutation, containPrimary}); !bypass {
+		return ret.(Lock), errors.Trace(err)
 	}
 	if containPrimary {
 		// try to get lock
@@ -582,10 +572,8 @@ func (txn *themisTxn) prewriteRow(tbl []byte, mutation *rowMutation, containPrim
 
 func (txn *themisTxn) prewritePrimary() error {
 	// hook for test
-	if txn.hooks.beforePrewritePrimary != nil {
-		if bypass, _, err := txn.hooks.beforePrewritePrimary(txn, nil); !bypass {
-			return err
-		}
+	if bypass, _, err := txn.hooks.beforePrewritePrimary(txn, nil); !bypass {
+		return err
 	}
 	err := txn.prewriteRowWithLockClean(txn.primary.Table, txn.primaryRow, true)
 	if err != nil {
@@ -598,10 +586,8 @@ func (txn *themisTxn) prewritePrimary() error {
 
 func (txn *themisTxn) prewriteSecondary() error {
 	// hook for test
-	if txn.hooks.beforePrewriteSecondary != nil {
-		if bypass, _, err := txn.hooks.beforePrewriteSecondary(txn, nil); !bypass {
-			return err
-		}
+	if bypass, _, err := txn.hooks.beforePrewriteSecondary(txn, nil); !bypass {
+		return err
 	}
 	if txn.conf.brokenPrewriteSecondaryTest {
 		return txn.brokenPrewriteSecondary()
