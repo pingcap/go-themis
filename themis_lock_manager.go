@@ -93,7 +93,7 @@ func (m *themisLockManager) GetCommitTimestamp(cc *hbase.ColumnCoordinate, prewr
 	// add del write column
 	g.AddStringColumn("#d", qual)
 	// time range => [ours startTs, +Inf)
-	g.AddTimeRange(prewriteTs, math.MaxInt32)
+	g.AddTimeRange(prewriteTs, math.MaxInt64)
 	g.SetMaxVersion(math.MaxInt32)
 	r, err := m.hbaseClient.Get(string(cc.Table), g)
 	if err != nil {
