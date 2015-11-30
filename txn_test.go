@@ -442,6 +442,7 @@ func createChoosePrimaryRowHook(target string) *txnHook {
 	return hook
 }
 
+// Fix https://github.com/pingcap/go-themis/issues/19
 func (s *TransactionTestSuit) TestPrewriteSecondaryMissingRows(c *C) {
 	conf := defaultTxnConf
 	hook := createChoosePrimaryRowHook("A")
