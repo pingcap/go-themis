@@ -3,28 +3,19 @@ package themis
 // Hooks for debugging and testing
 type fnHook func(txn *themisTxn, ctx interface{}) (bypass bool, ret interface{}, err error)
 
-type hookPoint int
-
-const (
-	afterChoosePrimary hookPoint = iota
-	afterChooseSecondary
-	beforePrewritePrimary
-	beforePrewriteLockClean
-	beforePrewriteSecondary
-	beforeCommitPrimary
-	beforeCommitSecondary
-	onSecondaryOccursLock
-	onPrewriteRow
-	onTxnSuccess
-	onTxnFailed
-)
-
-type txnHook map[hookPoint]fnHook
-
-func newHook() txnHook {
-	return make(txnHook)
+type txnHook struct {
+	afterChoosePrimaryAndSecondary fnHook
+	beforePrewritePrimary          fnHook
+	beforePrewriteLockClean        fnHook
+	beforePrewriteSecondary        fnHook
+	beforeCommitPrimary            fnHook
+	beforeCommitSecondary          fnHook
+	onSecondaryOccursLock          fnHook
+	onPrewriteRow                  fnHook
+	onTxnSuccess                   fnHook
+	onTxnFailed                    fnHook
 }
 
-func (h txnHook) addPoint(point hookPoint, fn fnHook) {
-	h[point] = fn
+func newHook() *txnHook {
+	return &txnHook{}
 }

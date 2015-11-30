@@ -39,7 +39,7 @@ func init() {
 	rand.Seed(time.Now().UnixNano())
 	log.Errorf("create conn")
 	var err error
-	c, err = hbase.NewClient([]string{"cuiqiu-pc"}, "/hbase")
+	c, err = hbase.NewClient([]string{"localhost"}, "/hbase")
 	if err != nil {
 		log.Fatal(err)
 	}

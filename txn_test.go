@@ -6,10 +6,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/juju/errors"
 	"github.com/ngaut/log"
 	. "github.com/pingcap/check"
 	"github.com/pingcap/go-hbase"
+	"github.com/pingcap/tidb/kv"
+	"github.com/pingcap/tidb/terror"
 )
 
 type TransactionTestSuit struct {
@@ -38,34 +39,17 @@ func getTestRowKey(c *C) []byte {
 }
 
 func (s *TransactionTestSuit) TestAsyncCommit(c *C) {
-	p := hbase.NewPut(getTestRowKey(c)).AddValue(cf, q, []byte("val"))
-	tx := newTxn(s.cli, defaultTxnConf)
-	tx.Put(themisTestTableName, p)
-	tx.Commit()
-
-	tx = newTxn(s.cli, defaultTxnConf)
-	d := hbase.NewDelete([]byte("test")).AddColumn(cf, q)
-	tx.Delete(themisTestTableName, d)
-	tx.Commit()
-
-	tx = newTxn(s.cli, defaultTxnConf)
-	g := hbase.NewGet([]byte("test")).AddFamily(cf)
-	r, err := tx.Get(themisTestTableName, g)
-	c.Assert(err, Equals, nil)
-	c.Assert(r, IsNil)
-	tx.Commit()
-
 	conf := defaultTxnConf
 	conf.brokenCommitSecondaryTest = true
 
-	tx = newTxn(s.cli, conf)
+	tx := newTxn(s.cli, conf)
 	// simulating broken commit
 	for i := 0; i < 10; i++ {
 		p := hbase.NewPut([]byte(fmt.Sprintf("test_%d", i)))
 		p.AddValue(cf, q, []byte(fmt.Sprintf("%d", tx.(*themisTxn).GetStartTS())))
 		tx.Put(themisTestTableName, p)
 	}
-	err = tx.Commit()
+	err := tx.Commit()
 	c.Assert(err, Equals, nil)
 
 	//  wait until lock expired.
@@ -79,30 +63,35 @@ func (s *TransactionTestSuit) TestAsyncCommit(c *C) {
 
 	log.Warn("Try commit again")
 	// new transction will not see lock
-	tx = newTxn(s.cli, defaultTxnConf)
-	for i := 0; i < 5; i++ {
-		p := hbase.NewPut([]byte(fmt.Sprintf("test_%d", i)))
-		p.AddValue(cf, q, []byte(fmt.Sprintf("%d", tx.(*themisTxn).GetStartTS())))
-		tx.Put(themisTestTableName, p)
-	}
-	err = tx.Commit()
-	if err != nil {
-		log.Error(err)
-	}
-	c.Assert(err, Equals, nil)
-
-	tx = newTxn(s.cli, defaultTxnConf)
-	for i := 5; i < 10; i++ {
-		p := hbase.NewPut([]byte(fmt.Sprintf("test_%d", i)))
-		p.AddValue(cf, q, []byte(fmt.Sprintf("%d", tx.(*themisTxn).GetStartTS())))
-		tx.Put(themisTestTableName, p)
-	}
-	err = tx.Commit()
-	if err != nil {
-		log.Error(errors.ErrorStack(err))
+	for {
+		tx = newTxn(s.cli, defaultTxnConf)
+		for i := 0; i < 5; i++ {
+			p := hbase.NewPut([]byte(fmt.Sprintf("test_%d", i)))
+			p.AddValue(cf, q, []byte(fmt.Sprintf("%d", tx.(*themisTxn).GetStartTS())))
+			tx.Put(themisTestTableName, p)
+		}
+		err = tx.Commit()
+		if err == nil || !terror.ErrorEqual(err, kv.ErrRetryable) {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
 	}
 	c.Assert(err, Equals, nil)
 
+	for {
+		tx = newTxn(s.cli, defaultTxnConf)
+		for i := 5; i < 10; i++ {
+			p := hbase.NewPut([]byte(fmt.Sprintf("test_%d", i)))
+			p.AddValue(cf, q, []byte(fmt.Sprintf("%d", tx.(*themisTxn).GetStartTS())))
+			tx.Put(themisTestTableName, p)
+		}
+		err = tx.Commit()
+		if err == nil || !terror.ErrorEqual(err, kv.ErrRetryable) {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	c.Assert(err, Equals, nil)
 }
 
 func (s *TransactionTestSuit) TestBrokenPrewriteSecondary(c *C) {
@@ -382,12 +371,12 @@ func (s *TransactionTestSuit) TestExceedMaxRows(c *C) {
 func (s *TransactionTestSuit) TestCheckCommitStatus(c *C) {
 	conf := defaultTxnConf
 	hook := newHook()
-	hook.addPoint(beforeCommitSecondary, func(txn *themisTxn, ctx interface{}) (bool, interface{}, error) {
+	hook.beforeCommitSecondary = func(txn *themisTxn, ctx interface{}) (bool, interface{}, error) {
 		// add before commit secondary hook, just return, do not commit
 		// secondaries
 		log.Info("before commit secondary")
 		return false, nil, nil
-	})
+	}
 	tx := newTxn(s.cli, conf)
 	tx.(*themisTxn).setHook(hook)
 	for i := 0; i < 10; i++ {
@@ -407,7 +396,7 @@ func (s *TransactionTestSuit) TestCheckCommitStatus(c *C) {
 	}
 
 	hook = newHook()
-	hook.addPoint(beforePrewriteLockClean, func(txn *themisTxn, ctx interface{}) (bool, interface{}, error) {
+	hook.beforePrewriteLockClean = func(txn *themisTxn, ctx interface{}) (bool, interface{}, error) {
 		lock := ctx.(Lock)
 		cc := lock.Primary().Coordinate()
 		exists, err := txn.lockCleaner.IsLockExists(lock.Coordinate(), 0, lock.Timestamp())
@@ -417,16 +406,16 @@ func (s *TransactionTestSuit) TestCheckCommitStatus(c *C) {
 		c.Assert(err, IsNil)
 		c.Assert(ts, Equals, commitTs)
 		return true, nil, nil
-	})
+	}
 	tx = newTxn(s.cli, conf)
 	tx.(*themisTxn).setHook(hook)
 	tx.Put(themisTestTableName, hbase.NewPut([]byte(sRow)).AddValue(cf, q, []byte("newVal")))
 	tx.Commit()
 }
 
-func createChoosePrimaryRowHook(target string) txnHook {
+func createChoosePrimaryRowHook(target string) *txnHook {
 	hook := newHook()
-	hook.addPoint(afterChooseSecondary, func(txn *themisTxn, ctx interface{}) (bool, interface{}, error) {
+	hook.afterChoosePrimaryAndSecondary = func(txn *themisTxn, ctx interface{}) (bool, interface{}, error) {
 		txn.secondary = nil
 		txn.secondaryRows = nil
 		for tblName, rowMutations := range txn.mutationCache.mutations {
@@ -449,20 +438,20 @@ func createChoosePrimaryRowHook(target string) txnHook {
 			}
 		}
 		return true, nil, nil
-	})
+	}
 	return hook
 }
 
 func (s *TransactionTestSuit) TestPrewriteSecondaryMissingRows(c *C) {
 	conf := defaultTxnConf
 	hook := createChoosePrimaryRowHook("A")
-	hook.addPoint(beforePrewriteSecondary, func(txn *themisTxn, ctx interface{}) (bool, interface{}, error) {
+	hook.beforePrewriteSecondary = func(txn *themisTxn, ctx interface{}) (bool, interface{}, error) {
 		go func() {
 			hook2 := createChoosePrimaryRowHook("B")
-			hook2.addPoint(onSecondaryOccursLock, func(txn *themisTxn, ctx interface{}) (bool, interface{}, error) {
+			hook2.onSecondaryOccursLock = func(txn *themisTxn, ctx interface{}) (bool, interface{}, error) {
 				log.Info("tx2 occurs secondary lock", ctx)
 				return true, nil, nil
-			})
+			}
 			tx2 := newTxn(s.cli, conf)
 			tx2.(*themisTxn).setHook(hook2)
 			tx2.Put(themisTestTableName, hbase.NewPut([]byte("A")).AddValue(cf, q, []byte("A")))
@@ -472,14 +461,14 @@ func (s *TransactionTestSuit) TestPrewriteSecondaryMissingRows(c *C) {
 		}()
 		time.Sleep(500 * time.Millisecond)
 		return true, nil, nil
-	})
+	}
 
-	hook.addPoint(onSecondaryOccursLock, func(txn *themisTxn, ctx interface{}) (bool, interface{}, error) {
+	hook.onSecondaryOccursLock = func(txn *themisTxn, ctx interface{}) (bool, interface{}, error) {
 		log.Info("tx1", ctx)
 		return true, nil, nil
-	})
+	}
 
-	hook.addPoint(onPrewriteRow, func(txn *themisTxn, ctx interface{}) (bool, interface{}, error) {
+	hook.onPrewriteRow = func(txn *themisTxn, ctx interface{}) (bool, interface{}, error) {
 		containPrimary := ctx.([]interface{})[1].(bool)
 		if !containPrimary {
 			rm := ctx.([]interface{})[0].(*rowMutation)
@@ -487,7 +476,7 @@ func (s *TransactionTestSuit) TestPrewriteSecondaryMissingRows(c *C) {
 		}
 
 		return true, nil, nil
-	})
+	}
 
 	tx1 := newTxn(s.cli, conf)
 	tx1.(*themisTxn).setHook(hook)
