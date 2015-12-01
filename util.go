@@ -3,6 +3,10 @@ package themis
 import "github.com/juju/errors"
 
 func errorEqual(err1, err2 error) bool {
+	if err1 == err2 {
+		return true
+	}
+
 	e1 := errors.Cause(err1)
 	e2 := errors.Cause(err2)
 
