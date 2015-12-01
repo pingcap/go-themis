@@ -9,8 +9,6 @@ import (
 	"github.com/ngaut/log"
 	. "github.com/pingcap/check"
 	"github.com/pingcap/go-hbase"
-	"github.com/pingcap/tidb/kv"
-	"github.com/pingcap/tidb/terror"
 )
 
 type TransactionTestSuit struct {
@@ -71,7 +69,7 @@ func (s *TransactionTestSuit) TestAsyncCommit(c *C) {
 			tx.Put(themisTestTableName, p)
 		}
 		err = tx.Commit()
-		if err == nil || !terror.ErrorEqual(err, kv.ErrRetryable) {
+		if err == nil || !errorEqual(err, ErrRetryable) {
 			break
 		}
 		time.Sleep(100 * time.Millisecond)
@@ -86,7 +84,7 @@ func (s *TransactionTestSuit) TestAsyncCommit(c *C) {
 			tx.Put(themisTestTableName, p)
 		}
 		err = tx.Commit()
-		if err == nil || !terror.ErrorEqual(err, kv.ErrRetryable) {
+		if err == nil || !errorEqual(err, ErrRetryable) {
 			break
 		}
 		time.Sleep(100 * time.Millisecond)

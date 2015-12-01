@@ -11,6 +11,7 @@ var (
 	ErrCleanLockFailed = errors.New("clean lock failed")
 	ErrWrongRegion     = errors.New("wrong region, please retry")
 	ErrTooManyRows     = errors.New("too many rows in one transaction")
+	ErrRetryable       = errors.New("try again later")
 )
 
 type Txn interface {

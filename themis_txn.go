@@ -9,8 +9,6 @@ import (
 	"github.com/ngaut/log"
 	"github.com/pingcap/go-hbase"
 	"github.com/pingcap/go-themis/oracle"
-	"github.com/pingcap/tidb/kv"
-	"github.com/pingcap/tidb/terror"
 )
 
 type TxnConfig struct {
@@ -170,7 +168,7 @@ func (txn *themisTxn) Commit() error {
 		// occurs single row NotInRegion error.
 		log.Error(errors.ErrorStack(err))
 		// it's safe to retry, because this transaction is not committed.
-		return kv.ErrRetryable
+		return ErrRetryable
 	}
 
 	err = txn.prewriteSecondary()
@@ -180,13 +178,13 @@ func (txn *themisTxn) Commit() error {
 			// reset hbase client buffered region info
 			txn.client.CleanAllRegionCache()
 		}
-		return kv.ErrRetryable
+		return ErrRetryable
 	}
 
 	txn.commitTs, err = txn.oracle.GetTimestamp()
 	if err != nil {
 		log.Error(errors.ErrorStack(err))
-		return kv.ErrRetryable
+		return ErrRetryable
 	}
 	err = txn.commitPrimary()
 	if err != nil {
@@ -194,7 +192,7 @@ func (txn *themisTxn) Commit() error {
 		log.Error("commit primary row failed", txn.startTs, err)
 		txn.rollbackRow(txn.primaryRow.tbl, txn.primaryRow)
 		txn.rollbackSecondaryRow(len(txn.secondaryRows) - 1)
-		return kv.ErrRetryable
+		return ErrRetryable
 	}
 	txn.commitSecondary()
 	log.Debug("themis txn commit successfully", txn.startTs, txn.commitTs)
@@ -389,7 +387,7 @@ func (txn *themisTxn) cleanLockWithRetry(lock Lock) error {
 		log.Warnf("lock exists txn: %v lock-txn: %v row: %q", txn.startTs, lock.Timestamp(), lock.Coordinate().Row)
 		// try clean lock
 		err := txn.tryToCleanLock(lock)
-		if terror.ErrorEqual(err, ErrLockNotExpired) {
+		if errorEqual(err, ErrLockNotExpired) {
 			log.Warn("sleep a while, and retry clean lock", txn.startTs)
 			// TODO(dongxu) use cleverer retry sleep time interval
 			time.Sleep(pauseTime)
@@ -512,7 +510,7 @@ func (txn *themisTxn) batchPrewriteSecondaryRowsWithLockClean(tbl []byte, rowMs 
 				for _, l := range locks {
 					log.Errorf("can't clean lock, column:%q; conflict lock: %+v, lock ts: %d", l.Coordinate(), l, l.Timestamp())
 				}
-				return kv.ErrLockConflict
+				return ErrRetryable
 			}
 		}
 	}
@@ -541,7 +539,7 @@ func (txn *themisTxn) prewriteRowWithLockClean(tbl []byte, mutation *rowMutation
 		}
 		if lock != nil {
 			log.Errorf("can't clean lock, column:%q; conflict lock: %+v, lock ts: %d", lock.Coordinate(), lock, lock.Timestamp())
-			return kv.ErrLockConflict
+			return ErrRetryable
 		}
 	}
 	return nil
