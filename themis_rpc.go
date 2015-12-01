@@ -4,14 +4,12 @@ import (
 	"fmt"
 	"runtime/debug"
 
-	"github.com/juju/errors"
-
 	pb "github.com/golang/protobuf/proto"
+	"github.com/juju/errors"
 	"github.com/ngaut/log"
 	"github.com/pingcap/go-hbase"
 	"github.com/pingcap/go-hbase/proto"
 	"github.com/pingcap/go-themis/oracle"
-	"github.com/pingcap/tidb/kv"
 )
 
 func newThemisRPC(client hbase.HBaseClient, oracle oracle.Oracle, conf TxnConfig) *themisRPC {
@@ -128,7 +126,7 @@ func (rpc *themisRPC) prewriteRow(tbl []byte, row []byte, mutations []*columnMut
 	commitTs := b.GetNewerWriteTs()
 	if commitTs != 0 {
 		log.Errorf("write conflict, encounter write with larger timestamp than prewriteTs=%d, commitTs=%d, row=%s", prewriteTs, commitTs, string(row))
-		return nil, kv.ErrLockConflict
+		return nil, ErrRetryable
 	}
 
 	l, err := parseLockFromBytes(b.ExistLock)
@@ -329,7 +327,7 @@ func judgePerwriteResultRow(pResult *ThemisPrewriteResult, tbl []byte, prewriteT
 	// Oops, someone else have already locked this row.
 	newerTs := pResult.GetNewerWriteTs()
 	if newerTs != 0 {
-		return nil, kv.ErrLockConflict
+		return nil, ErrRetryable
 	}
 
 	l, err := parseLockFromBytes(pResult.ExistLock)
