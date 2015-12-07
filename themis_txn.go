@@ -734,13 +734,18 @@ func (txn *themisTxn) rollbackSecondaryRow(successIndex int) error {
 	return nil
 }
 
-func (txn *themisTxn) GetScanner(tbl []byte, startKey, endKey []byte, batchSize int) *ThemisScanner {
+func (txn *themisTxn) GetScanner(tbl []byte, startKey, endKey []byte, batchSize int, attrs map[string]([]byte)) *ThemisScanner {
 	scanner := newThemisScanner(tbl, txn, batchSize, txn.client)
 	if startKey != nil {
 		scanner.setStartRow(startKey)
 	}
 	if endKey != nil {
 		scanner.setStopRow(endKey)
+	}
+	if attrs != nil {
+		for a, v := range attrs {
+			scanner.scan.AddAttr(a, v)
+		}
 	}
 	return scanner
 }
