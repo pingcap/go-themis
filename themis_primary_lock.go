@@ -32,7 +32,9 @@ func (l *themisPrimaryLock) Secondaries() []Lock {
 	var slocks []Lock
 	for k, v := range l.secondaries {
 		c := &hbase.ColumnCoordinate{}
-		c.ParseFromString(k)
+		// TODO: handle error, now just ignore
+		if err := c.ParseFromString(k); err != nil {
+		}
 		slock := newThemisSecondaryLock()
 		slock.primaryCoordinate = l.coordinate
 		slock.coordinate = c
@@ -53,8 +55,12 @@ func (l *themisPrimaryLock) Encode() []byte {
 	binary.Write(buf, binary.BigEndian, int32(len(l.secondaries)))
 	for k, v := range l.secondaries {
 		c := &hbase.ColumnCoordinate{}
-		c.ParseFromString(k)
-		c.Write(buf)
+		// TODO: handle error, now just ignore
+		if err := c.ParseFromString(k); err != nil {
+		}
+		// TODO: handle error, now just ignore
+		if err := c.Write(buf); err != nil {
+		}
 		buf.WriteByte(uint8(v))
 	}
 	return buf.Bytes()

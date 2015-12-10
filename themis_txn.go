@@ -254,7 +254,12 @@ func (txn *themisTxn) batchCommitSecondary(wait bool) {
 func (txn *themisTxn) groupByRegion() map[string]map[string]*rowMutation {
 	rsRowMap := make(map[string]map[string]*rowMutation)
 	for _, rm := range txn.secondaryRows {
-		key := getBatchGroupKey(txn.client.LocateRegion(rm.tbl, rm.row, true), string(rm.tbl))
+		region, err := txn.client.LocateRegion(rm.tbl, rm.row, true)
+		if err != nil {
+			log.Error("locate region error")
+			continue
+		}
+		key := getBatchGroupKey(region, string(rm.tbl))
 		if _, exists := rsRowMap[key]; !exists {
 			rsRowMap[key] = map[string]*rowMutation{}
 		}
@@ -451,7 +456,10 @@ func (txn *themisTxn) tryToCleanLock(lock Lock) error {
 		// erase lock and data if commitTs is 0; otherwise, commit it.
 		for k, v := range pl.(*themisPrimaryLock).secondaries {
 			cc := &hbase.ColumnCoordinate{}
-			cc.ParseFromString(k)
+			// Question: must return error if error occur, or skip this?
+			if err = cc.ParseFromString(k); err != nil {
+				return errors.Trace(err)
+			}
 			if commitTs == 0 {
 				// commitTs == 0, means clean primary lock successfully
 				// expire trx havn't committed yet, we must delete lock and

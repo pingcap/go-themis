@@ -44,7 +44,9 @@ func (l *themisSecondaryLock) Encode() []byte {
 	buf := bytes.NewBuffer(nil)
 	binary.Write(buf, binary.BigEndian, uint8(0))
 	l.themisLock.write(buf)
-	l.primaryCoordinate.Write(buf)
+	// TODO: handle error, now just ignore
+	if err := l.primaryCoordinate.Write(buf); err != nil {
+	}
 	return buf.Bytes()
 }
 

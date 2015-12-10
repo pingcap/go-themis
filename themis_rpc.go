@@ -348,7 +348,9 @@ func judgePerwriteResultRow(pResult *ThemisPrewriteResult, tbl []byte, prewriteT
 
 func toCellFromRowM(col string, cvPair *mutationValuePair) *proto.Cell {
 	c := &hbase.Column{}
-	c.ParseFromString(col)
+	// TODO: handle error, now just ignore
+	if err := c.ParseFromString(col); err != nil {
+	}
 	ret := &proto.Cell{
 		Family:    c.Family,
 		Qualifier: c.Qual,
