@@ -24,6 +24,10 @@ var (
 	globalOracle = oracles.NewLocalOracle()
 )
 
+func init() {
+	// disable unittest annoying log
+	log.SetLevelByString("error")
+}
 func newTxn(c hbase.HBaseClient, cfg TxnConfig) Txn {
 	txn, err := NewTxnWithConf(c, cfg, globalOracle)
 	if err != nil {
@@ -50,16 +54,10 @@ func createHBaseClient() (hbase.HBaseClient, error) {
 }
 
 func createNewTableAndDropOldTable(cli hbase.HBaseClient, tblName string, family string, splits [][]byte) error {
-	b, err := cli.TableExists(tblName)
+	log.Info("drop table : " + tblName)
+	err := dropTable(cli, tblName)
 	if err != nil {
 		return err
-	}
-	if b {
-		err := dropTable(cli, tblName)
-		if err != nil {
-			return err
-		}
-		log.Info("drop table : " + tblName)
 	}
 	t := hbase.NewTableDesciptor(hbase.NewTableNameWithDefaultNS(tblName))
 	cf := hbase.NewColumnFamilyDescriptor(family)

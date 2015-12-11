@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 
 	"github.com/juju/errors"
+	"github.com/ngaut/log"
 	"github.com/pingcap/go-hbase"
 	"github.com/pingcap/go-hbase/iohelper"
 )
@@ -44,8 +45,9 @@ func (l *themisSecondaryLock) Encode() []byte {
 	buf := bytes.NewBuffer(nil)
 	binary.Write(buf, binary.BigEndian, uint8(0))
 	l.themisLock.write(buf)
-	// TODO: handle error, now just ignore
+	// TODO: handle error, now just log
 	if err := l.primaryCoordinate.Write(buf); err != nil {
+		log.Warnf("write error, primary coordinate: %s, buf: %s, err: %v", l, buf, err)
 	}
 	return buf.Bytes()
 }
