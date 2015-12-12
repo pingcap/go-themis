@@ -77,6 +77,9 @@ func (s *ThemisScanner) Closed() bool {
 
 func (s *ThemisScanner) Close() {
 	if !s.scan.Closed() {
-		s.scan.Close()
+		// TODO: handle error, now just log
+		if err := s.scan.Close(); err != nil {
+			log.Warnf("scanner close error, scan: %s, error: %v", s.scan, err)
+		}
 	}
 }

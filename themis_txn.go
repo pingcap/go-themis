@@ -225,9 +225,12 @@ func (txn *themisTxn) commitSecondarySync() {
 	}
 }
 
-func (txn *themisTxn) batchCommitSecondary(wait bool) {
+func (txn *themisTxn) batchCommitSecondary(wait bool) error {
 	//will batch commit all rows in a region
-	rsRowMap := txn.groupByRegion()
+	rsRowMap, err := txn.groupByRegion()
+	if err != nil {
+		return errors.Trace(err)
+	}
 
 	wg := sync.WaitGroup{}
 	for _, regionRowMap := range rsRowMap {
@@ -249,18 +252,23 @@ func (txn *themisTxn) batchCommitSecondary(wait bool) {
 	if wait {
 		wg.Wait()
 	}
+	return nil
 }
 
-func (txn *themisTxn) groupByRegion() map[string]map[string]*rowMutation {
+func (txn *themisTxn) groupByRegion() (map[string]map[string]*rowMutation, error) {
 	rsRowMap := make(map[string]map[string]*rowMutation)
 	for _, rm := range txn.secondaryRows {
-		key := getBatchGroupKey(txn.client.LocateRegion(rm.tbl, rm.row, true), string(rm.tbl))
+		region, err := txn.client.LocateRegion(rm.tbl, rm.row, true)
+		if err != nil {
+			return nil, errors.Trace(err)
+		}
+		key := getBatchGroupKey(region, string(rm.tbl))
 		if _, exists := rsRowMap[key]; !exists {
 			rsRowMap[key] = map[string]*rowMutation{}
 		}
 		rsRowMap[key][string(rm.row)] = rm
 	}
-	return rsRowMap
+	return rsRowMap, nil
 }
 
 func (txn *themisTxn) commitPrimary() error {
@@ -442,7 +450,6 @@ func (txn *themisTxn) tryToCleanLock(lock Lock) error {
 		if err != nil {
 			return errors.Trace(err)
 		}
-		//
 		if cleanedLock != nil {
 			pl = cleanedLock
 		}
@@ -451,7 +458,9 @@ func (txn *themisTxn) tryToCleanLock(lock Lock) error {
 		// erase lock and data if commitTs is 0; otherwise, commit it.
 		for k, v := range pl.(*themisPrimaryLock).secondaries {
 			cc := &hbase.ColumnCoordinate{}
-			cc.ParseFromString(k)
+			if err = cc.ParseFromString(k); err != nil {
+				return errors.Trace(err)
+			}
 			if commitTs == 0 {
 				// commitTs == 0, means clean primary lock successfully
 				// expire trx havn't committed yet, we must delete lock and
@@ -642,7 +651,10 @@ func (txn *themisTxn) brokenPrewriteSecondary() error {
 func (txn *themisTxn) batchPrewriteSecondaries() error {
 	wg := sync.WaitGroup{}
 	//will batch prewrite all rows in a region
-	rsRowMap := txn.groupByRegion()
+	rsRowMap, err := txn.groupByRegion()
+	if err != nil {
+		return errors.Trace(err)
+	}
 
 	errChan := make(chan error, len(rsRowMap))
 	defer close(errChan)
@@ -686,7 +698,7 @@ func (txn *themisTxn) batchPrewriteSecondaries() error {
 		if err != nil {
 			log.Error("batch prewrite secondary rows error, txn:", txn.startTs, err)
 		}
-		return err
+		return errors.Trace(err)
 	}
 	return nil
 }

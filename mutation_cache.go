@@ -5,6 +5,7 @@ import (
 	"sort"
 
 	"github.com/juju/errors"
+	"github.com/ngaut/log"
 	"github.com/pingcap/go-hbase"
 	"github.com/pingcap/go-hbase/proto"
 )
@@ -99,7 +100,10 @@ func (r *rowMutation) getColumns() []hbase.Column {
 	var ret []hbase.Column
 	for k, _ := range r.mutations {
 		c := &hbase.Column{}
-		c.ParseFromString(k)
+		// TODO: handle error, now just ignore
+		if err := c.ParseFromString(k); err != nil {
+			log.Warnf("parse from string error, column: %s, mutation: %s, error: %v", c, k, err)
+		}
 		ret = append(ret, *c)
 	}
 	return ret
@@ -154,7 +158,10 @@ func (r *rowMutation) mutationList(withValue bool) []*columnMutation {
 			v.value = r.mutations[k].value
 		}
 		c := &hbase.Column{}
-		c.ParseFromString(k)
+		// TODO: handle error, now just ignore
+		if err := c.ParseFromString(k); err != nil {
+			log.Warnf("parse from string error, column: %s, mutation: %s, error: %v", c, k, err)
+		}
 		ret = append(ret, &columnMutation{
 			Column:            c,
 			mutationValuePair: v,

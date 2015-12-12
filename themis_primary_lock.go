@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 
 	"github.com/juju/errors"
+	"github.com/ngaut/log"
 	"github.com/pingcap/go-hbase"
 	"github.com/pingcap/go-hbase/iohelper"
 )
@@ -32,7 +33,11 @@ func (l *themisPrimaryLock) Secondaries() []Lock {
 	var slocks []Lock
 	for k, v := range l.secondaries {
 		c := &hbase.ColumnCoordinate{}
-		c.ParseFromString(k)
+		// TODO: handle error, now just ignore
+		if err := c.ParseFromString(k); err != nil {
+			log.Warnf("parse from string error, column coordinate: %s, secondary: %s, error: %v", c, k, err)
+			continue
+		}
 		slock := newThemisSecondaryLock()
 		slock.primaryCoordinate = l.coordinate
 		slock.coordinate = c
@@ -53,8 +58,14 @@ func (l *themisPrimaryLock) Encode() []byte {
 	binary.Write(buf, binary.BigEndian, int32(len(l.secondaries)))
 	for k, v := range l.secondaries {
 		c := &hbase.ColumnCoordinate{}
-		c.ParseFromString(k)
-		c.Write(buf)
+		// TODO: handle error, now just log
+		if err := c.ParseFromString(k); err != nil {
+			log.Warnf("parse from string error, column coordinate: %s, secondary: %s, error: %v", c, k, err)
+		}
+		// TODO: handle error, now just log
+		if err := c.Write(buf); err != nil {
+			log.Warnf("write error, column coordinate: %s, buf: %s, error: %v", c, buf, err)
+		}
 		buf.WriteByte(uint8(v))
 	}
 	return buf.Bytes()
