@@ -1,4 +1,5 @@
 # go-themis
+[![Build Status](https://travis-ci.org/pingcap/go-themis.svg?branch=master)](https://travis-ci.org/pingcap/go-themis)
 
 go-themis is a Go client for [pingcap/themis](https://github.com/pingcap/themis).
 
