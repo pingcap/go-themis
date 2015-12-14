@@ -1,26 +1,25 @@
 package main
 
 import (
+	"flag"
 	"fmt"
+	"net/http"
+	_ "net/http/pprof"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
-	"runtime"
-
-	"net/http"
-	_ "net/http/pprof"
-
-	"flag"
-
 	"github.com/ngaut/log"
 	"github.com/pingcap/go-hbase"
 	"github.com/pingcap/go-themis"
+	"github.com/pingcap/go-themis/oracle/oracles"
 )
 
 var c hbase.HBaseClient
 var tblName = "themis_bench"
+var o = oracles.NewLocalOracle()
 
 var (
 	zk = flag.String("zk", "localhost", "hbase zookeeper info")
@@ -84,7 +83,10 @@ func main() {
 		go func(i int) {
 			defer wg.Done()
 
-			tx := themis.NewTxn(c)
+			tx, err := themis.NewTxn(c, o)
+			if err != nil {
+				log.Fatal(err)
+			}
 
 			put := hbase.NewPut([]byte(fmt.Sprintf("1Row_%s_%d", prefix, i)))
 			put.AddValue([]byte("cf"), []byte("q"), []byte(strconv.Itoa(i)))
@@ -103,7 +105,7 @@ func main() {
 			tx.Put(tblName, put3)
 			tx.Put(tblName, put4)
 
-			err := tx.Commit()
+			err = tx.Commit()
 			if err != nil {
 				log.Error(err)
 			}
