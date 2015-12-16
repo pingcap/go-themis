@@ -43,7 +43,7 @@ func createTable() {
 	// create new hbase table for store
 	t := hbase.NewTableDesciptor(hbase.NewTableNameWithDefaultNS(tblName))
 	cf := hbase.NewColumnFamilyDescriptor("cf")
-	cf.AddStrAddr("THEMIS_ENABLE", "true")
+	cf.AddAttr("THEMIS_ENABLE", "true")
 	t.AddColumnDesc(cf)
 	err := c.CreateTable(t, nil)
 	if err != nil {
