@@ -56,7 +56,7 @@ func createNewTableAndDropOldTable(cli hbase.HBaseClient, tblName string, family
 	}
 	t := hbase.NewTableDesciptor(hbase.NewTableNameWithDefaultNS(tblName))
 	cf := hbase.NewColumnFamilyDescriptor(family)
-	cf.AddStrAddr("THEMIS_ENABLE", "true")
+	cf.AddAttr("THEMIS_ENABLE", "true")
 	t.AddColumnDesc(cf)
 	err = cli.CreateTable(t, splits)
 	if err != nil {
