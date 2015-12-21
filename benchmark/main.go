@@ -46,7 +46,7 @@ func init() {
 
 func createTable(tblName string) {
 	// create new hbase table for store
-	t := hbase.NewTableDesciptor(hbase.NewTableNameWithDefaultNS(tblName))
+	t := hbase.NewTableDesciptor(tblName)
 	cf := hbase.NewColumnFamilyDescriptor("cf")
 	cf.AddAttr("THEMIS_ENABLE", "true")
 	t.AddColumnDesc(cf)
@@ -57,9 +57,8 @@ func createTable(tblName string) {
 }
 
 func dropTable(tblName string) {
-	t := hbase.NewTableNameWithDefaultNS(tblName)
-	c.DisableTable(t)
-	c.DropTable(t)
+	c.DisableTable(tblName)
+	c.DropTable(tblName)
 }
 
 func main() {
