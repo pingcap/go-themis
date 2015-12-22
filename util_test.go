@@ -54,7 +54,7 @@ func createNewTableAndDropOldTable(cli hbase.HBaseClient, tblName string, family
 	if err != nil {
 		return err
 	}
-	t := hbase.NewTableDesciptor(hbase.NewTableNameWithDefaultNS(tblName))
+	t := hbase.NewTableDesciptor(tblName)
 	cf := hbase.NewColumnFamilyDescriptor(family)
 	cf.AddAttr("THEMIS_ENABLE", "true")
 	t.AddColumnDesc(cf)
@@ -74,12 +74,12 @@ func dropTable(cli hbase.HBaseClient, tblName string) error {
 		log.Info("table not exist")
 		return nil
 	}
-	t := hbase.NewTableNameWithDefaultNS(tblName)
-	err = cli.DisableTable(t)
+
+	err = cli.DisableTable(tblName)
 	if err != nil {
 		return err
 	}
-	err = cli.DropTable(t)
+	err = cli.DropTable(tblName)
 	if err != nil {
 		return err
 	}
