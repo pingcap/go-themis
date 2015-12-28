@@ -17,12 +17,14 @@ type remoteOracle struct {
 	c *client.Client
 }
 
-// NewRemoteOracle creates an oracle that use a remote data source, addr should
-// be formatted as 'host:port'.
+// NewRemoteOracle creates an oracle that use a remote data source.
 // Refer https://github.com/ngaut/tso for more details.
-func NewRemoteOracle(addr string) oracle.Oracle {
+func NewRemoteOracle(zks, path string) oracle.Oracle {
 	return &remoteOracle{
-		c: client.NewClient(&client.Conf{ServerAddr: addr}),
+		c: client.NewClient(&client.Conf{
+			ZKAddr:   zks,
+			RootPath: path,
+		}),
 	}
 }
 
