@@ -3,7 +3,7 @@ package oracles
 import "testing"
 
 func TestRemoteOracle(t *testing.T) {
-	oracle := NewRemoteOracle("localhost:1234")
+	oracle := NewRemoteOracle("localhost", "/zk/tso")
 	m := map[uint64]struct{}{}
 	for i := 0; i < 100000; i++ {
 		ts, err := oracle.GetTimestamp()
